@@ -28,7 +28,7 @@ exports.getStaffDashboard = async (req, res) => {
     const arrivals = await Reservation.find({
       hotelId,
       checkInDate: { $gte: todayStart, $lte: todayEnd },
-      status: "reserved",
+      status: "confirmed",
     }).lean();
 
     const formattedArrivals = arrivals.map(r => ({
@@ -43,7 +43,7 @@ exports.getStaffDashboard = async (req, res) => {
     const checkouts = await Reservation.find({
       hotelId,
       checkOutDate: { $gte: todayStart, $lte: todayEnd },
-      status: "checked_in",
+      status: "checked-in",
     }).lean();
 
     const formattedCheckouts = checkouts.map(r => ({

@@ -10,7 +10,7 @@ const { protect } = require("../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../middleware/roleMiddleware");
 const { authorizeModule } = require("../../middleware/moduleMiddleware");
 
-router.use(protect, authorizeRoles("hoteladmin"), authorizeModule("inventory"));
+router.use(protect, authorizeRoles("hoteladmin", "staff"), authorizeModule("inventory"));
 
 router.route("/")
   .get(getInventory)

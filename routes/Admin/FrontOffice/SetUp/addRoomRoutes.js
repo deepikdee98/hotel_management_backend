@@ -6,7 +6,7 @@ const {addRoom} = require("../../../../controllers/Admin/FrontOffice/SetUp/addro
 const { protect } = require("../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../middleware/roleMiddleware");
 
-router.use(protect, authorizeRoles("hoteladmin"));
+router.use(protect, authorizeRoles("hoteladmin", "staff"));
 
 router
   .route("/")

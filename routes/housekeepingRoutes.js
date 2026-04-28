@@ -8,8 +8,22 @@ const { authorizeModule } = require("../middleware/moduleMiddleware");
 
 const Room = require("../models/Admin/roomModel");
 const HousekeepingTask = require("../models/Admin/housekeepingTaskModel");
+const User = require("../models/userModel");
 
 router.use(protect, authorizeRoles("hoteladmin", "staff", "superadmin"), authorizeModule("housekeeping"));
+
+router.get("/staff", asyncHandler(async (req, res) => {
+  const staff = await User.find({
+    hotelId: req.user.hotelId,
+    role: "staff",
+    isActive: { $ne: false },
+    modules: "housekeeping",
+  })
+    .select("username email role hotelId modules isActive createdAt")
+    .sort({ username: 1 });
+
+  res.json({ success: true, data: { staff } });
+}));
 
 router.get("/rooms", asyncHandler(async (req, res) => {
   const filter = { hotelId: req.user.hotelId };

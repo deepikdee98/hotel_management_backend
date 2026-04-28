@@ -10,7 +10,7 @@ const {
 const { protect } = require("../../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../../middleware/roleMiddleware");
 
-router.use(protect, authorizeRoles("hoteladmin"));
+router.use(protect, authorizeRoles("hoteladmin", "staff"));
 
 
 

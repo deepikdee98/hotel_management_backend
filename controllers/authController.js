@@ -14,8 +14,11 @@ const buildAccessToken = (user) => {
     {
       user: {
         id: user._id,
-        email: user.email,        username: user.username,        role: user.role,
+        email: user.email,
+        username: user.username,
+        role: user.role,
         hotelId: user.hotelId || null,
+        modules: user.modules || [],
         tokenVersion: user.tokenVersion,
       },
     },
@@ -72,6 +75,7 @@ const loginUser = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     role: user.role,
+    modules: user.modules || [],
   });
 });
 
