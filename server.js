@@ -3,6 +3,7 @@ const dotenv = require("dotenv").config();
 const cors = require("cors");
 const connectDb = require("./config/dbConnection");
 const errorHandler = require("./middleware/errorHandler");
+const { startNightAuditJob } = require("./jobs/nightAudit");
 
 connectDb();
 
@@ -53,8 +54,11 @@ app.use("/accounts", require("./routes/accountsRoutes"));
 app.use("/reports", require("./routes/reportsRoutes"));
 app.use("/pos", require("./routes/posRoutes"));
 app.use("/housekeeping", require("./routes/housekeepingRoutes"));
+app.use("/api/night-audit", require("./routes/nightAuditRoutes"));
 
 app.use(errorHandler);
+
+startNightAuditJob();
 
 app.listen(port,"0.0.0.0", () => {
   console.log(`Server running on port ${port}`);

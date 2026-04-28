@@ -1,4 +1,22 @@
 const Hotel = require("../../../../models/SuperAdmin/hotelModel");
+const SystemConfig = require("../../../../models/SystemConfig");
+
+const isValidTimeFormat = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || ""));
+
+const getOrCreateSystemConfig = async (hotelId) => {
+  return SystemConfig.findOneAndUpdate(
+    { hotelId },
+    {
+      $setOnInsert: {
+        hotelId,
+        currentBusinessDate: new Date(),
+        nightAuditTime: "00:00",
+        nightAuditEnabled: true,
+      },
+    },
+    { upsert: true, new: true }
+  );
+};
 
 
 // @desc    Get Hotel Config
@@ -7,7 +25,10 @@ const Hotel = require("../../../../models/SuperAdmin/hotelModel");
 const getHotelConfig = async (req, res) => {
   try {
 
-    const hotel = await Hotel.findById(req.user.hotelId);
+    const [hotel, systemConfig] = await Promise.all([
+      Hotel.findById(req.user.hotelId),
+      getOrCreateSystemConfig(req.user.hotelId),
+    ]);
 
     if (!hotel) {
       return res.status(404).json({
@@ -15,7 +36,13 @@ const getHotelConfig = async (req, res) => {
       });
     }
 
-    res.json(hotel);
+    res.json({
+      ...hotel.toObject(),
+      nightAuditTime: systemConfig.nightAuditTime,
+      nightAuditEnabled: systemConfig.nightAuditEnabled,
+      currentBusinessDate: systemConfig.currentBusinessDate,
+      lastNightAuditAt: systemConfig.lastNightAuditAt,
+    });
 
   } catch (error) {
 
@@ -43,10 +70,21 @@ const updateHotelConfig = async (req, res) => {
       checkInTime,
       checkOutTime,
       currency,
-      dateFormat
+      dateFormat,
+      nightAuditTime,
+      nightAuditEnabled,
     } = req.body;
 
-    const hotel = await Hotel.findById(req.user.hotelId);
+    if (nightAuditTime !== undefined && !isValidTimeFormat(nightAuditTime)) {
+      return res.status(400).json({
+        message: "nightAuditTime must be in HH:mm format",
+      });
+    }
+
+    const [hotel, systemConfig] = await Promise.all([
+      Hotel.findById(req.user.hotelId),
+      getOrCreateSystemConfig(req.user.hotelId),
+    ]);
 
     if (!hotel) {
       return res.status(404).json({
@@ -64,11 +102,28 @@ const updateHotelConfig = async (req, res) => {
     hotel.currency = currency || hotel.currency;
     hotel.dateFormat = dateFormat || hotel.dateFormat;
 
-    const updatedHotel = await hotel.save();
+    if (nightAuditTime !== undefined) {
+      systemConfig.nightAuditTime = nightAuditTime;
+    }
+
+    if (nightAuditEnabled !== undefined) {
+      systemConfig.nightAuditEnabled = Boolean(nightAuditEnabled);
+    }
+
+    const [updatedHotel, updatedSystemConfig] = await Promise.all([
+      hotel.save(),
+      systemConfig.save(),
+    ]);
 
     res.json({
       message: "Hotel configuration updated successfully",
-      hotel: updatedHotel
+      hotel: {
+        ...updatedHotel.toObject(),
+        nightAuditTime: updatedSystemConfig.nightAuditTime,
+        nightAuditEnabled: updatedSystemConfig.nightAuditEnabled,
+        currentBusinessDate: updatedSystemConfig.currentBusinessDate,
+        lastNightAuditAt: updatedSystemConfig.lastNightAuditAt,
+      }
     });
 
   } catch (error) {

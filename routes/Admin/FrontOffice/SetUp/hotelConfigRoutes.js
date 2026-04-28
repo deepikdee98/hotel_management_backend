@@ -9,11 +9,11 @@ const {
 const { protect } = require("../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../middleware/roleMiddleware");
 
-router.use(protect, authorizeRoles("hoteladmin", "staff"));
+router.use(protect);
 
 router
   .route("/")
-  .get(getHotelConfig)
-  .put(updateHotelConfig);
+  .get(authorizeRoles("hoteladmin", "staff"), getHotelConfig)
+  .put(authorizeRoles("hoteladmin"), updateHotelConfig);
 
 module.exports = router;

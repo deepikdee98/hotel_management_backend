@@ -36,6 +36,10 @@ const {
   expressCheckIn,
   addPaxCheckIn,
 } = require("../controllers/Admin/FrontOffice/Reception/CheckIn/checkInController");
+const {
+  getNightAuditRunStatus,
+  runNightAuditManually,
+} = require("../controllers/nightAuditController");
 
 const { shiftRoom } = require("../controllers/Admin/FrontOffice/Reception/ShiftRoom/shiftRoomController");
 
@@ -1104,65 +1108,8 @@ router.get("/offers", asyncHandler(async (req, res) => {
 }));
 
 // Night Audit
-router.get("/night-audit/status", asyncHandler(async (req, res) => {
-  const today = req.query.date || new Date().toISOString().slice(0, 10);
-  const audit = await NightAudit.findOne({
-    hotelId: req.user.hotelId,
-    auditDate: today,
-  }).populate("completedBy", "name username");
-
-  res.json({ success: true, data: audit });
-}));
-
-router.post("/night-audit/run", asyncHandler(async (req, res) => {
-  const rooms = await Room.find({ hotelId: req.user.hotelId });
-  const occupied = rooms.filter((item) => item.status === "occupied").length;
-  const totalRooms = rooms.length;
-
-  const today = req.body.auditDate || new Date().toISOString().slice(0, 10);
-  const start = new Date(`${today}T00:00:00.000Z`);
-  const end = new Date(`${today}T23:59:59.999Z`);
-
-  const todayCharges = await FolioTransaction.find({
-    hotelId: req.user.hotelId,
-    createdAt: { $gte: start, $lte: end },
-    type: { $in: ["room-tariff", "service-charge"] },
-  });
-
-  const roomRevenue = todayCharges
-    .filter((item) => item.type === "room-tariff")
-    .reduce((sum, item) => sum + toNum(item.totalAmount), 0);
-
-  const otherRevenue = todayCharges
-    .filter((item) => item.type === "service-charge")
-    .reduce((sum, item) => sum + toNum(item.totalAmount), 0);
-
-  const summary = {
-    roomsOccupied: occupied,
-    occupancyRate: totalRooms ? Number(((occupied / totalRooms) * 100).toFixed(2)) : 0,
-    totalRoomRevenue: roomRevenue,
-    totalOtherRevenue: otherRevenue,
-    totalRevenue: roomRevenue + otherRevenue,
-    discrepancies: 0,
-  };
-
-  const audit = await NightAudit.create({
-    hotelId: req.user.hotelId,
-    auditDate: today,
-    tasks: req.body.tasks || {},
-    status: "Completed",
-    summary,
-    reports: {
-      dailyRevenueReport: `/reports/revenue?date=${today}`,
-      occupancyReport: `/reports/occupancy?date=${today}`,
-      managerReport: `/reports/dashboard?date=${today}`,
-    },
-    completedBy: req.user._id,
-    completedAt: new Date(),
-  });
-
-  res.status(201).json({ success: true, data: audit });
-}));
+router.get("/night-audit/status", getNightAuditRunStatus);
+router.post("/night-audit/run", runNightAuditManually);
 
 // Get Paidout/Refund Transactions
 router.get("/paidout-refund", asyncHandler(async (req, res) => {
