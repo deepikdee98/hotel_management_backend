@@ -1,5 +1,6 @@
 const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
+const Hotel = require("../models/SuperAdmin/hotelModel");
 const jwt = require("jsonwebtoken");
 
 let bcrypt;
@@ -9,7 +10,27 @@ try {
   bcrypt = require("bcryptjs");
 }
 
-const buildAccessToken = (user) => {
+const getEffectiveModules = async (user) => {
+  if (user.role === "superadmin") {
+    return Array.isArray(user.modules) ? user.modules : [];
+  }
+
+  if (!user.hotelId) {
+    return Array.isArray(user.modules) ? user.modules : [];
+  }
+
+  const hotel = await Hotel.findById(user.hotelId).select("modules").lean();
+  const hotelModules = Array.isArray(hotel?.modules) ? hotel.modules : [];
+
+  if (user.role === "hoteladmin") {
+    return hotelModules;
+  }
+
+  const userModules = Array.isArray(user.modules) ? user.modules : [];
+  return userModules.filter((moduleName) => hotelModules.includes(moduleName));
+};
+
+const buildAccessToken = (user, modules) => {
   return jwt.sign(
     {
       user: {
@@ -18,7 +39,7 @@ const buildAccessToken = (user) => {
         username: user.username,
         role: user.role,
         hotelId: user.hotelId || null,
-        modules: user.modules || [],
+        modules,
         tokenVersion: user.tokenVersion,
       },
     },
@@ -67,7 +88,8 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new Error("Invalid email or password");
   }
 
-  const accessToken = buildAccessToken(user);
+  const modules = await getEffectiveModules(user);
+  const accessToken = buildAccessToken(user, modules);
   const refreshToken = buildRefreshToken(user);
 
   res.status(200).json({
@@ -75,7 +97,7 @@ const loginUser = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     role: user.role,
-    modules: user.modules || [],
+    modules,
   });
 });
 
@@ -83,6 +105,7 @@ const loginUser = asyncHandler(async (req, res) => {
 // @route   POST /auth/super-admin/login
 // @access  Public
 const loginSuperAdmin = asyncHandler(async (req, res) => {
+  console.log("Super admin login attempt");
   const { email, password } = req.body;
 
   if (!email || !password) {
@@ -109,7 +132,8 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
     throw new Error("Invalid super admin credentials");
   }
 
-  const accessToken = buildAccessToken(user);
+  const modules = await getEffectiveModules(user);
+  const accessToken = buildAccessToken(user, modules);
   const refreshToken = buildRefreshToken(user);
 
   res.status(200).json({
@@ -143,7 +167,8 @@ const refreshToken = asyncHandler(async (req, res) => {
     throw new Error("Invalid refresh token");
   }
 
-  const accessToken = buildAccessToken(user);
+  const modules = await getEffectiveModules(user);
+  const accessToken = buildAccessToken(user, modules);
   const nextRefreshToken = buildRefreshToken(user);
 
   res.status(200).json({

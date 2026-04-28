@@ -1,7 +1,28 @@
 const asyncHandler = require("express-async-handler")
 const jwt = require("jsonwebtoken")
 const User = require("../models/userModel")
+const Hotel = require("../models/SuperAdmin/hotelModel")
 const { constants } = require("../constants")
+
+const resolveUserModules = async (user) => {
+    if (user.role === "superadmin") {
+        return Array.isArray(user.modules) ? user.modules : [];
+    }
+
+    if (!user.hotelId) {
+        return Array.isArray(user.modules) ? user.modules : [];
+    }
+
+    const hotel = await Hotel.findById(user.hotelId).select("modules").lean();
+    const hotelModules = Array.isArray(hotel?.modules) ? hotel.modules : [];
+
+    if (user.role === "hoteladmin") {
+        return hotelModules;
+    }
+
+    const assignedModules = Array.isArray(user.modules) ? user.modules : [];
+    return assignedModules.filter((moduleName) => hotelModules.includes(moduleName));
+}
 
 const protect = asyncHandler(async (req, res, next) => {
     let token;
@@ -22,6 +43,8 @@ const protect = asyncHandler(async (req, res, next) => {
                     message: "Session expired. Please login again."
                 });
             }
+
+            req.user.modules = await resolveUserModules(req.user)
 
             next()
         } catch (error) {

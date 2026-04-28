@@ -7,16 +7,15 @@ const authorizeModule = (moduleName) => {
       return res.status(401).json({ message: "Unauthorized" });
     }
     
-    // SuperAdmin and HotelAdmin have access to all modules
-    if (req.user.role === "superadmin" || req.user.role === "hoteladmin") {
+    // SuperAdmin has access to all modules.
+    if (req.user.role === "superadmin") {
       return next();
     }
 
-    // Check if staff has the module assigned
-    if (req.user.role === "staff") {
-      if (req.user.modules && req.user.modules.includes(moduleName)) {
-        return next();
-      }
+    const assignedModules = Array.isArray(req.user.modules) ? req.user.modules : [];
+
+    if (["hoteladmin", "staff"].includes(req.user.role) && assignedModules.includes(moduleName)) {
+      return next();
     }
 
     return res.status(403).json({
