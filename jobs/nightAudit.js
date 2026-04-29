@@ -81,7 +81,7 @@ const executeNightAuditForAllHotels = async () => {
 };
 
 const startNightAuditJob = () => {
-  cron.schedule("* * * * *", async () => {
+  cron.schedule("*/10 * * * *", async () => {
     try {
       const runCount = await executeNightAuditForAllHotels();
       if (runCount > 0) {

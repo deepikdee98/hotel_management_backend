@@ -141,6 +141,7 @@ const getAllHotels = asyncHandler(async (req, res) => {
       subscriptionStatus: subscription.status,
       subscriptionMessage: subscription.message,
       subscriptionIsValid: subscription.isValid,
+      subscriptionDaysLeft: subscription.daysLeft,
     };
   });
 

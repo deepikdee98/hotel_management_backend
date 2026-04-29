@@ -65,6 +65,8 @@ const buildRefreshToken = (user) => {
 
 const loginUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
+  let hotel = null;
+  let subscription = null;
   
   if (!email || !password) {
     res.status(400);
@@ -85,8 +87,8 @@ const loginUser = asyncHandler(async (req, res) => {
 
   // Check Hotel Subscription/Status for non-superadmins
   if (user.role !== 'superadmin' && user.hotelId) {
-    const hotel = await Hotel.findById(user.hotelId);
-    const subscription = checkSubscriptionStatus(hotel);
+    hotel = await Hotel.findById(user.hotelId);
+    subscription = checkSubscriptionStatus(hotel);
 
     if (!subscription.isValid) {
       res.status(403);
@@ -111,6 +113,14 @@ const loginUser = asyncHandler(async (req, res) => {
     refreshToken,
     role: user.role,
     modules,
+    subscription,
+    hotel: hotel
+      ? {
+          id: hotel._id,
+          name: hotel.name,
+          expiryDate: hotel.expiryDate,
+        }
+      : null,
   });
 });
 
@@ -181,9 +191,10 @@ const refreshToken = asyncHandler(async (req, res) => {
   }
 
   // Check Hotel Subscription/Status for non-superadmins during refresh
+  let subscription = null;
   if (user.role !== 'superadmin' && user.hotelId) {
     const hotel = await Hotel.findById(user.hotelId);
-    const subscription = checkSubscriptionStatus(hotel);
+    subscription = checkSubscriptionStatus(hotel);
 
     if (!subscription.isValid) {
       res.status(403);
@@ -199,6 +210,7 @@ const refreshToken = asyncHandler(async (req, res) => {
     message: "Token refreshed",
     accessToken,
     refreshToken: nextRefreshToken,
+    subscription,
   });
 });
 

@@ -35,7 +35,8 @@ const protect = asyncHandler(async (req, res, next) => {
                     res.status(403).json({
                         message: subscription.message,
                         code: subscription.status === 'INACTIVE' ? 'HOTEL_INACTIVE' : 'SUBSCRIPTION_EXPIRED',
-                        expiryDate: subscription.expiryDate
+                        expiryDate: subscription.expiryDate,
+                        subscription
                     });
                     return;
                 }
