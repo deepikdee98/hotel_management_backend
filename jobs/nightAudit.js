@@ -58,6 +58,7 @@ const executeNightAuditForAllHotels = async () => {
   }).lean();
   const systemConfigMap = new Map(systemConfigs.map((config) => [String(config.hotelId), config]));
   const now = new Date();
+  let runCount = 0;
 
   for (const hotel of hotels) {
     if (!Array.isArray(hotel.modules) || !hotel.modules.includes("front-office")) {
@@ -73,16 +74,19 @@ const executeNightAuditForAllHotels = async () => {
       () => runNightAudit({ hotelId: hotel._id, triggerSource: "cron" }),
       1
     );
+    runCount += 1;
   }
+
+  return runCount;
 };
 
 const startNightAuditJob = () => {
   cron.schedule("* * * * *", async () => {
-    console.log("[NightAudit] Scheduled night audit started");
-
     try {
-      await executeNightAuditForAllHotels();
-      console.log("[NightAudit] Scheduled night audit completed");
+      const runCount = await executeNightAuditForAllHotels();
+      if (runCount > 0) {
+        console.log(`[NightAudit] Scheduled night audit completed for ${runCount} hotel(s)`);
+      }
     } catch (error) {
       console.error("[NightAudit] Scheduled night audit failed", error);
     }

@@ -2,6 +2,7 @@ const asyncHandler = require("express-async-handler");
 const Hotel = require("../../models/SuperAdmin/hotelModel");
 const User = require("../../models/userModel");
 const { constants } = require("../../constants");
+const { checkSubscriptionStatus } = require("../../utils/subscriptionHelper");
 
 let bcrypt;
 try {
@@ -52,6 +53,10 @@ const createHotel = asyncHandler(async (req, res) => {
   // Hash admin password
   const hashedPassword = await bcrypt.hash(adminPassword, 10);
 
+  // Set expiry date to 1 year from now
+  const expiryDate = new Date();
+  expiryDate.setFullYear(expiryDate.getFullYear() + 1);
+
   //  Create Hotel
   const hotel = await Hotel.create({
     name,
@@ -62,6 +67,8 @@ const createHotel = asyncHandler(async (req, res) => {
     country,
     totalRooms,
     modules,
+    isActive: true,
+    expiryDate,
     createdBy: req.user._id,
   });
 
@@ -125,11 +132,23 @@ const getAllHotels = asyncHandler(async (req, res) => {
     .skip(skip)
     .limit(Number(limit));
 
+  const hotelsWithSubscriptionStatus = hotels.map((hotel) => {
+    const hotelObject = hotel.toObject();
+    const subscription = checkSubscriptionStatus(hotelObject);
+
+    return {
+      ...hotelObject,
+      subscriptionStatus: subscription.status,
+      subscriptionMessage: subscription.message,
+      subscriptionIsValid: subscription.isValid,
+    };
+  });
+
   res.status(200).json({
     total,
     page: Number(page),
     totalPages: Math.ceil(total / limit),
-    hotels
+    hotels: hotelsWithSubscriptionStatus
   });
 });
 
@@ -253,8 +272,58 @@ const updateHotelStatus = asyncHandler(async (req, res) => {
   });
 });
 
+// @desc    Extend hotel subscription by 1 year
+// @route   PATCH /super-admin/hotels/:id/extend-subscription
+// @access  Private (Super Admin)
+const extendSubscription = asyncHandler(async (req, res) => {
+  const hotel = await Hotel.findById(req.params.id);
 
+  if (!hotel) {
+    res.status(constants.NOT_FOUND);
+    throw new Error("Hotel not found");
+  }
 
+  // Add 1 year to current expiry date or current date (whichever is later)
+  const currentExpiry = new Date(hotel.expiryDate);
+  const now = new Date();
+  
+  const baseDate = currentExpiry > now ? currentExpiry : now;
+  const newExpiryDate = new Date(baseDate);
+  newExpiryDate.setFullYear(newExpiryDate.getFullYear() + 1);
+
+  hotel.expiryDate = newExpiryDate;
+  await hotel.save();
+
+  res.status(200).json({
+    message: "Subscription extended successfully by 1 year",
+    expiryDate: hotel.expiryDate,
+    hotel
+  });
+});
+
+// @desc    Toggle hotel active status
+// @route   PATCH /super-admin/hotels/:id/toggle-active
+// @access  Private (Super Admin)
+const toggleActiveStatus = asyncHandler(async (req, res) => {
+  const hotel = await Hotel.findById(req.params.id);
+
+  if (!hotel) {
+    res.status(constants.NOT_FOUND);
+    throw new Error("Hotel not found");
+  }
+
+  hotel.isActive = !hotel.isActive;
+  // Also sync with the old status field if needed
+  hotel.status = hotel.isActive ? "active" : "inactive";
+  
+  await hotel.save();
+
+  res.status(200).json({
+    message: `Hotel ${hotel.isActive ? "activated" : "deactivated"} successfully`,
+    isActive: hotel.isActive,
+    hotel
+  });
+});
 
 module.exports = {
   createHotel,
@@ -264,4 +333,6 @@ module.exports = {
   deleteHotel,
   updateHotelModules,
   updateHotelStatus,
+  extendSubscription,
+  toggleActiveStatus,
 };

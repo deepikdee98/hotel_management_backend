@@ -3,6 +3,9 @@ const SystemConfig = require("../../../../models/SystemConfig");
 
 const isValidTimeFormat = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || ""));
 
+const normalizeCurrency = (value) => String(value || "").toUpperCase();
+const normalizeDateFormat = (value) => String(value || "").toUpperCase();
+
 const getOrCreateSystemConfig = async (hotelId) => {
   return SystemConfig.findOneAndUpdate(
     { hotelId },
@@ -14,7 +17,7 @@ const getOrCreateSystemConfig = async (hotelId) => {
         nightAuditEnabled: true,
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 };
 
@@ -99,8 +102,8 @@ const updateHotelConfig = async (req, res) => {
     hotel.gstNumber = gstNumber || hotel.gstNumber;
     hotel.checkInTime = checkInTime || hotel.checkInTime;
     hotel.checkOutTime = checkOutTime || hotel.checkOutTime;
-    hotel.currency = currency || hotel.currency;
-    hotel.dateFormat = dateFormat || hotel.dateFormat;
+    hotel.currency = currency ? normalizeCurrency(currency) : hotel.currency;
+    hotel.dateFormat = dateFormat ? normalizeDateFormat(dateFormat) : hotel.dateFormat;
 
     if (nightAuditTime !== undefined) {
       systemConfig.nightAuditTime = nightAuditTime;
@@ -129,7 +132,7 @@ const updateHotelConfig = async (req, res) => {
   } catch (error) {
 
     res.status(500).json({
-      message: "Failed to update hotel configuration"
+      message: error.message || "Failed to update hotel configuration"
     });
 
   }

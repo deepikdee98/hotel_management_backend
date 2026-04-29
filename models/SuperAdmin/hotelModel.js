@@ -83,6 +83,16 @@ const hotelSchema = mongoose.Schema(
       default: "active",
     },
 
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+
+    expiryDate: {
+      type: Date,
+      required: true
+    },
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",

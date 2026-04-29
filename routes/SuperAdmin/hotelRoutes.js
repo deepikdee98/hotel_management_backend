@@ -9,6 +9,8 @@ const {
   deleteHotel,
   updateHotelModules,
   updateHotelStatus,
+  extendSubscription,
+  toggleActiveStatus,
 } = require("../../controllers/SuperAdmin/hotelController");
 
 const { protect } = require("../../middleware/authMiddleware");
@@ -29,5 +31,7 @@ router
 
 router.patch("/:id/modules", updateHotelModules);
 router.patch("/:id/status", updateHotelStatus);
+router.patch("/:id/extend-subscription", extendSubscription);
+router.patch("/:id/toggle-active", toggleActiveStatus);
 
 module.exports = router;

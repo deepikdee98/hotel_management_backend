@@ -55,7 +55,7 @@ const getOrCreateSystemConfig = async (hotelId) => {
         currentBusinessDate: normalizeDate(new Date()),
       },
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 };
 

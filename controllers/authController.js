@@ -2,6 +2,8 @@ const asyncHandler = require("express-async-handler");
 const User = require("../models/userModel");
 const Hotel = require("../models/SuperAdmin/hotelModel");
 const jwt = require("jsonwebtoken");
+const { checkSubscriptionStatus } = require("../utils/subscriptionHelper");
+const { constants } = require("../constants");
 
 let bcrypt;
 try {
@@ -73,19 +75,30 @@ const loginUser = asyncHandler(async (req, res) => {
 
   if (!user) {
     res.status(401);
-    throw new Error("Invalid email or password");
+    throw new Error("Invalid email or password.");
   }
 
   if (!user.isActive) {
     res.status(403);
-    throw new Error("Account is deactivated");
+    throw new Error("Your account has been deactivated. Please contact Super Admin.");
+  }
+
+  // Check Hotel Subscription/Status for non-superadmins
+  if (user.role !== 'superadmin' && user.hotelId) {
+    const hotel = await Hotel.findById(user.hotelId);
+    const subscription = checkSubscriptionStatus(hotel);
+
+    if (!subscription.isValid) {
+      res.status(403);
+      throw new Error(subscription.message);
+    }
   }
 
   const isPasswordMatch = await bcrypt.compare(password, user.password);
 
   if (!isPasswordMatch) {
     res.status(401);
-    throw new Error("Invalid email or password");
+    throw new Error("Invalid email or password.");
   }
 
   const modules = await getEffectiveModules(user);
@@ -122,7 +135,7 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
 
   if (!user.isActive) {
     res.status(403);
-    throw new Error("Account is deactivated");
+    throw new Error("Your account has been deactivated. Please contact Super Admin.");
   }
 
   const isPasswordMatch = await bcrypt.compare(password, user.password);
@@ -165,6 +178,17 @@ const refreshToken = asyncHandler(async (req, res) => {
   if (!user || decoded.user.tokenVersion !== user.tokenVersion) {
     res.status(401);
     throw new Error("Invalid refresh token");
+  }
+
+  // Check Hotel Subscription/Status for non-superadmins during refresh
+  if (user.role !== 'superadmin' && user.hotelId) {
+    const hotel = await Hotel.findById(user.hotelId);
+    const subscription = checkSubscriptionStatus(hotel);
+
+    if (!subscription.isValid) {
+      res.status(403);
+      throw new Error(subscription.message);
+    }
   }
 
   const modules = await getEffectiveModules(user);

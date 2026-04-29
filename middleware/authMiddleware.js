@@ -3,26 +3,7 @@ const jwt = require("jsonwebtoken")
 const User = require("../models/userModel")
 const Hotel = require("../models/SuperAdmin/hotelModel")
 const { constants } = require("../constants")
-
-const resolveUserModules = async (user) => {
-    if (user.role === "superadmin") {
-        return Array.isArray(user.modules) ? user.modules : [];
-    }
-
-    if (!user.hotelId) {
-        return Array.isArray(user.modules) ? user.modules : [];
-    }
-
-    const hotel = await Hotel.findById(user.hotelId).select("modules").lean();
-    const hotelModules = Array.isArray(hotel?.modules) ? hotel.modules : [];
-
-    if (user.role === "hoteladmin") {
-        return hotelModules;
-    }
-
-    const assignedModules = Array.isArray(user.modules) ? user.modules : [];
-    return assignedModules.filter((moduleName) => hotelModules.includes(moduleName));
-}
+const { checkSubscriptionStatus } = require("../utils/subscriptionHelper")
 
 const protect = asyncHandler(async (req, res, next) => {
     let token;
@@ -44,12 +25,28 @@ const protect = asyncHandler(async (req, res, next) => {
                 });
             }
 
-            req.user.modules = await resolveUserModules(req.user)
+            // Subscription and Active Status Check
+            // Super admins are exempt from hotel subscription checks
+            if (req.user.role !== 'superadmin' && req.user.hotelId) {
+                const hotel = await Hotel.findById(req.user.hotelId);
+                const subscription = checkSubscriptionStatus(hotel);
+
+                if (!subscription.isValid) {
+                    res.status(403).json({
+                        message: subscription.message,
+                        code: subscription.status === 'INACTIVE' ? 'HOTEL_INACTIVE' : 'SUBSCRIPTION_EXPIRED',
+                        expiryDate: subscription.expiryDate
+                    });
+                    return;
+                }
+            }
 
             next()
         } catch (error) {
-            res.status(constants.UNAUTHORIZED)
-            throw new Error("User is not authorized")
+            if (res.statusCode === 200) {
+                res.status(constants.UNAUTHORIZED)
+            }
+            throw error
         }
     } else {
         res.status(constants.UNAUTHORIZED)
