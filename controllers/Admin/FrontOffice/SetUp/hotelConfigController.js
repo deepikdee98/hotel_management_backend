@@ -5,6 +5,18 @@ const isValidTimeFormat = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(v
 
 const normalizeCurrency = (value) => String(value || "").toUpperCase();
 const normalizeDateFormat = (value) => String(value || "").toUpperCase();
+const normalizePrefix = (value) => String(value || "").trim().toUpperCase();
+const toPositiveInteger = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+};
+
+const buildBookingPreview = (config) => {
+  const prefix = normalizePrefix(config.bookingPrefix) || "NOV";
+  const digitLength = toPositiveInteger(config.digitLength, 4);
+  const number = toPositiveInteger(config.currentNumber, toPositiveInteger(config.startNumber, 1));
+  return `${prefix}-${String(number).padStart(digitLength, "0")}`;
+};
 
 const getOrCreateSystemConfig = async (hotelId) => {
   return SystemConfig.findOneAndUpdate(
@@ -15,6 +27,13 @@ const getOrCreateSystemConfig = async (hotelId) => {
         currentBusinessDate: new Date(),
         nightAuditTime: "00:00",
         nightAuditEnabled: true,
+        bookingPrefix: "NOV",
+        startNumber: 1,
+        digitLength: 4,
+        resetFinancialYear: true,
+        currentNumber: 1,
+        currentFinancialYear: null,
+        financialYearFormat: "YYYY-YY",
       },
     },
     { upsert: true, returnDocument: "after" }
@@ -45,6 +64,14 @@ const getHotelConfig = async (req, res) => {
       nightAuditEnabled: systemConfig.nightAuditEnabled,
       currentBusinessDate: systemConfig.currentBusinessDate,
       lastNightAuditAt: systemConfig.lastNightAuditAt,
+      bookingPrefix: systemConfig.bookingPrefix,
+      startNumber: systemConfig.startNumber,
+      digitLength: systemConfig.digitLength,
+      resetFinancialYear: systemConfig.resetFinancialYear,
+      currentNumber: systemConfig.currentNumber,
+      currentFinancialYear: systemConfig.currentFinancialYear,
+      financialYearFormat: systemConfig.financialYearFormat,
+      bookingNumberPreview: buildBookingPreview(systemConfig),
     });
 
   } catch (error) {
@@ -76,6 +103,13 @@ const updateHotelConfig = async (req, res) => {
       dateFormat,
       nightAuditTime,
       nightAuditEnabled,
+      bookingPrefix,
+      startNumber,
+      digitLength,
+      resetFinancialYear,
+      currentNumber,
+      currentFinancialYear,
+      financialYearFormat,
     } = req.body;
 
     if (nightAuditTime !== undefined && !isValidTimeFormat(nightAuditTime)) {
@@ -113,6 +147,38 @@ const updateHotelConfig = async (req, res) => {
       systemConfig.nightAuditEnabled = Boolean(nightAuditEnabled);
     }
 
+    if (bookingPrefix !== undefined) {
+      const normalizedPrefix = normalizePrefix(bookingPrefix);
+      if (!normalizedPrefix) {
+        return res.status(400).json({ message: "Booking prefix is required" });
+      }
+      systemConfig.bookingPrefix = normalizedPrefix;
+    }
+
+    if (startNumber !== undefined) {
+      systemConfig.startNumber = toPositiveInteger(startNumber, 1);
+    }
+
+    if (digitLength !== undefined) {
+      systemConfig.digitLength = toPositiveInteger(digitLength, 4);
+    }
+
+    if (resetFinancialYear !== undefined) {
+      systemConfig.resetFinancialYear = Boolean(resetFinancialYear);
+    }
+
+    if (currentNumber !== undefined) {
+      systemConfig.currentNumber = toPositiveInteger(currentNumber, systemConfig.startNumber || 1);
+    }
+
+    if (currentFinancialYear !== undefined) {
+      systemConfig.currentFinancialYear = currentFinancialYear ? String(currentFinancialYear).trim() : null;
+    }
+
+    if (financialYearFormat !== undefined) {
+      systemConfig.financialYearFormat = String(financialYearFormat || "YYYY-YY").trim() || "YYYY-YY";
+    }
+
     const [updatedHotel, updatedSystemConfig] = await Promise.all([
       hotel.save(),
       systemConfig.save(),
@@ -126,6 +192,14 @@ const updateHotelConfig = async (req, res) => {
         nightAuditEnabled: updatedSystemConfig.nightAuditEnabled,
         currentBusinessDate: updatedSystemConfig.currentBusinessDate,
         lastNightAuditAt: updatedSystemConfig.lastNightAuditAt,
+        bookingPrefix: updatedSystemConfig.bookingPrefix,
+        startNumber: updatedSystemConfig.startNumber,
+        digitLength: updatedSystemConfig.digitLength,
+        resetFinancialYear: updatedSystemConfig.resetFinancialYear,
+        currentNumber: updatedSystemConfig.currentNumber,
+        currentFinancialYear: updatedSystemConfig.currentFinancialYear,
+        financialYearFormat: updatedSystemConfig.financialYearFormat,
+        bookingNumberPreview: buildBookingPreview(updatedSystemConfig),
       }
     });
 

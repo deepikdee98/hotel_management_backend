@@ -18,6 +18,11 @@ const folioSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    bookingGroupId: {
+      type: String,
+      index: true,
+      default: "",
+    },
     reservationId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Reservation",
@@ -46,6 +51,40 @@ const folioSchema = new mongoose.Schema(
     billingInstructions: {
       type: String,
       default: "",
+    },
+    actualCheckOutTime: {
+      type: Date,
+      default: null,
+    },
+    finalAmount: {
+      type: Number,
+      default: 0,
+    },
+    discount: {
+      type: Number,
+      default: 0,
+    },
+    extraCharges: {
+      type: Number,
+      default: 0,
+    },
+    checkoutMeta: {
+      type: Object,
+      default: {},
+    },
+    paymentStatus: {
+      type: String,
+      enum: ["paid", "pending_company", "pending"],
+      default: "pending",
+    },
+    billingType: {
+      type: String,
+      enum: ["full", "split", "company"],
+      default: "full",
+    },
+    gst: {
+      type: Object,
+      default: {},
     },
   },
   { timestamps: true }

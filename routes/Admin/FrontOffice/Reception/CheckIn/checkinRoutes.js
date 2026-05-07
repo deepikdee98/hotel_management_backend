@@ -6,7 +6,8 @@ const {
   getAllCheckIns,
   getCheckInById,
   getGRCardByRoom,
-  updateCheckIn
+  updateCheckIn,
+  removeLinkedRoomCheckIn
 } = require("../../../../../controllers/Admin/FrontOffice/Reception/CheckIn/checkInController");
 
 const { protect } = require("../../../../../middleware/authMiddleware");
@@ -18,6 +19,7 @@ router.post("/", createCheckIn);
 router.get("/", getAllCheckIns);
 router.get("/:id", getCheckInById);
 router.put("/:id", updateCheckIn);
+router.delete("/:id/linked-room", removeLinkedRoomCheckIn);
 router.get("/grcard/:roomId", getGRCardByRoom);
 
 module.exports = router;

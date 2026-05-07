@@ -25,6 +25,40 @@ const systemConfigSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    bookingPrefix: {
+      type: String,
+      default: "NOV",
+      trim: true,
+      uppercase: true,
+    },
+    startNumber: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    digitLength: {
+      type: Number,
+      default: 4,
+      min: 1,
+    },
+    resetFinancialYear: {
+      type: Boolean,
+      default: true,
+    },
+    currentNumber: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+    currentFinancialYear: {
+      type: String,
+      default: null,
+    },
+    financialYearFormat: {
+      type: String,
+      default: "YYYY-YY",
+      trim: true,
+    },
   },
   { timestamps: true }
 );

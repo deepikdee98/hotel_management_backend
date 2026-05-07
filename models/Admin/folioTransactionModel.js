@@ -20,6 +20,14 @@ const folioTransactionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    guestId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
+    guestName: {
+      type: String,
+      default: "",
+    },
     type: {
       type: String,
       enum: [

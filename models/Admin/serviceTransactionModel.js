@@ -8,6 +8,10 @@ const serviceTransactionSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    service: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Service",
+    },
     serviceName: String,
     room: {
       type: mongoose.Schema.Types.ObjectId,

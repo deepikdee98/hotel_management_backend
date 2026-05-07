@@ -84,6 +84,7 @@ const getGuestLookup = async (req, res) => {
 
     const result = reservations.map((resv) => ({
       reservationId: resv.reservationId,
+      bookingNumber: resv.bookingNumber || resv.reservationId,
       guestName: resv.guestName,
       phone: resv.phone,
       email: resv.email,

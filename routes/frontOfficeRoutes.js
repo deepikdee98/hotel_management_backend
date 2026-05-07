@@ -22,6 +22,8 @@ const FolioTransaction = require("../models/Admin/folioTransactionModel");
 const Complaint = require("../models/Admin/complaintModel");
 const OfferLog = require("../models/Admin/offerLogModel");
 const NightAudit = require("../models/Admin/nightAuditModel");
+const SystemConfig = require("../models/SystemConfig");
+const generateBookingNumber = require("../controllers/Admin/FrontOffice/Reception/CheckIn/generateBookingNumber");
 
 const {
   getReservations,
@@ -44,6 +46,41 @@ const {
 const { shiftRoom } = require("../controllers/Admin/FrontOffice/Reception/ShiftRoom/shiftRoomController");
 
 const toNum = (value) => Number(value || 0);
+
+const positiveInteger = (value, fallback) => {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? Math.floor(number) : fallback;
+};
+
+const previewBookingNumber = (config, now = new Date()) => {
+  const prefix = String(config?.bookingPrefix || "NOV").trim().toUpperCase() || "NOV";
+  const startNumber = positiveInteger(config?.startNumber, 1);
+  const digitLength = positiveInteger(config?.digitLength, 4);
+  const currentNumber = positiveInteger(config?.currentRunningNumber ?? config?.currentNumber, startNumber - 1);
+  const resetFinancialYear = config?.resetFinancialYear !== false;
+  const financialYearFormat = String(config?.financialYearFormat || "").trim();
+  const currentFinancialYear = financialYearFormat
+    ? generateBookingNumber.getFinancialYear(now, financialYearFormat)
+    : "";
+
+  const hasRunningNumber =
+    Boolean(config?.currentFinancialYear) ||
+    currentNumber > startNumber;
+  const shouldReset =
+    resetFinancialYear &&
+    financialYearFormat &&
+    config?.currentFinancialYear &&
+    config.currentFinancialYear !== currentFinancialYear;
+
+  const nextNumber = shouldReset || !hasRunningNumber ? startNumber : currentNumber + 1;
+  const paddedNumber = String(nextNumber).padStart(digitLength, "0");
+
+  if (resetFinancialYear && financialYearFormat) {
+    return `${prefix}/${currentFinancialYear}/${paddedNumber}`;
+  }
+
+  return `${prefix}-${paddedNumber}`;
+};
 
 const generateRooms = (startingRoomNumber, count, roomNumberFormat) => {
   const rooms = [];
@@ -156,23 +193,58 @@ const buildFolioData = async (folioId, hotelId) => {
     .populate("roomType", "name code")
     .populate("planType", "name code amount");
 
-  const serviceCharges = await ServiceTransaction.find({ hotelId, room: hydratedCheckin.roomNumber?._id }).sort({ createdAt: 1 });
-  const advances = await RoomAdvance.find({ hotelId, checkin: hydratedCheckin._id }).sort({ createdAt: 1 });
-  const folioTransactions = await FolioTransaction.find({ hotelId, folioId: folio._id }).sort({ createdAt: 1 });
+  const groupCheckins = hydratedCheckin.bookingGroupId
+    ? await Checkin.find({
+        hotelId,
+        bookingGroupId: hydratedCheckin.bookingGroupId,
+        status: { $ne: "checked-out" },
+        guestType: { $ne: "PAX" },
+      })
+        .populate("roomNumber", "roomNumber roomType")
+        .populate("roomType", "name code")
+        .sort({ createdAt: 1 })
+    : [hydratedCheckin];
+  const groupRoomIds = groupCheckins.map((item) => item.roomNumber?._id).filter(Boolean);
+  const groupCheckinIds = groupCheckins.map((item) => item._id);
+
+  // Fetch all guests in this room (main guest + PAX)
+  const allGuestsInRoom = await Checkin.find({
+    hotelId,
+    roomNumber: hydratedCheckin.roomNumber?._id,
+    $or: [
+      { _id: hydratedCheckin._id },
+      { mainCheckin: hydratedCheckin._id }
+    ]
+  }).select("guestName mobileNo guestType _id");
+
+  const guestList = allGuestsInRoom.map(g => ({
+    id: g._id,
+    name: g.guestName,
+    mobile: g.mobileNo,
+    type: g.guestType || "Main",
+  }));
+
+  const groupFolios = await Folio.find({ hotelId, checkinId: { $in: groupCheckinIds }, status: { $ne: "closed" } }).select("_id");
+  const groupFolioIds = groupFolios.map((item) => item._id);
+  const serviceCharges = await ServiceTransaction.find({ hotelId, room: { $in: groupRoomIds } }).sort({ createdAt: 1 });
+  const advances = await RoomAdvance.find({ hotelId, checkin: { $in: groupCheckinIds } }).sort({ createdAt: 1 });
+  const folioTransactions = await FolioTransaction.find({ hotelId, folioId: { $in: groupFolioIds.length ? groupFolioIds : [folio._id] } }).sort({ createdAt: 1 });
 
   const charges = [];
   const payments = [];
 
   serviceCharges.forEach((item) => {
+    const room = groupCheckins.find((entry) => String(entry.roomNumber?._id) === String(item.room));
     charges.push({
       id: item._id,
       date: item.createdAt,
-      description: item.serviceName,
+      description: `${room?.roomNumber?.roomNumber ? `Room ${room.roomNumber.roomNumber} - ` : ""}${item.serviceName}`,
       quantity: item.qty,
       rate: item.amount,
       amount: item.total,
       total: item.total,
       category: "Service",
+      guestId: null, // Shared by default
     });
   });
 
@@ -187,6 +259,8 @@ const buildFolioData = async (folioId, hotelId) => {
         amount: item.amount,
         total: item.totalAmount,
         category: item.type,
+        guestId: item.guestId,
+        guestName: item.guestName,
       });
       return;
     }
@@ -198,10 +272,13 @@ const buildFolioData = async (folioId, hotelId) => {
       mode: item.meta?.paymentMode || "Other",
       reference: item.meta?.reference || "",
       remarks: item.description,
+      guestId: item.guestId,
+      guestName: item.guestName,
     });
   });
 
   advances.forEach((item) => {
+    const advanceGuest = groupCheckins.find((entry) => String(entry._id) === String(item.checkin)) || hydratedCheckin;
     payments.push({
       id: item._id,
       date: item.createdAt,
@@ -209,6 +286,25 @@ const buildFolioData = async (folioId, hotelId) => {
       mode: item.paymentMode,
       reference: item.bookingNo || "",
       remarks: item.remarks || "Room advance",
+      guestId: advanceGuest._id,
+      guestName: advanceGuest.guestName,
+    });
+  });
+
+  groupCheckins.forEach((item) => {
+    const roomTotal = toNum(item.planCharges) + toNum(item.foodCharges) - toNum(item.discount);
+    if (roomTotal <= 0) return;
+    charges.unshift({
+      id: item._id,
+      date: item.checkInDate,
+      description: `Room ${item.roomNumber?.roomNumber || ""} tariff`,
+      quantity: item.nights || 1,
+      rate: roomTotal,
+      amount: roomTotal,
+      total: roomTotal,
+      category: "room-tariff",
+      guestId: item._id,
+      guestName: item.guestName,
     });
   });
 
@@ -218,17 +314,27 @@ const buildFolioData = async (folioId, hotelId) => {
   return {
     folioId: folio._id,
     folioNumber: folio.folioNumber,
-    bookingId: hydratedCheckin.bookingNo || "",
+    bookingId: hydratedCheckin.bookingNumber || hydratedCheckin.bookingNo || "",
+    bookingGroupId: hydratedCheckin.bookingGroupId || "",
     guest: {
+      id: hydratedCheckin._id,
       name: hydratedCheckin.guestName,
       email: hydratedCheckin.email,
       phone: hydratedCheckin.mobileNo,
       gstNumber: hydratedCheckin.gstNumber || "",
     },
+    guests: guestList,
     room: {
       roomNumber: hydratedCheckin.roomNumber?.roomNumber,
       roomType: hydratedCheckin.roomType?.name || hydratedCheckin.roomType?.code,
     },
+    linkedRooms: groupCheckins.map((item) => ({
+      checkinId: item._id,
+      bookingId: item.bookingNumber || item.bookingNo,
+      roomNumber: item.roomNumber?.roomNumber,
+      roomCharge: item.planCharges || 0,
+      foodCharge: item.foodCharges || 0,
+    })),
     stay: {
       checkIn: hydratedCheckin.checkInDate,
       checkOut: null,
@@ -246,6 +352,15 @@ const buildFolioData = async (folioId, hotelId) => {
 };
 
 router.use(protect, authorizeRoles("hoteladmin", "staff", "superadmin"), authorizeModule("front-office"));
+
+router.get("/booking-number/preview", asyncHandler(async (req, res) => {
+  const config = await SystemConfig.findOne({ hotelId: req.user.hotelId }).lean();
+
+  res.json({
+    success: true,
+    preview: previewBookingNumber(config),
+  });
+}));
 
 // Floors
 router.get("/floors", asyncHandler(async (req, res) => {
@@ -454,7 +569,31 @@ router.get("/rooms", asyncHandler(async (req, res) => {
     .populate("roomType", "name code")
     .sort({ roomNumber: 1 });
 
-  res.json({ success: true, data: { rooms } });
+  const activeCheckins = await Checkin.find({
+    hotelId: req.user.hotelId,
+    status: { $ne: "checked-out" },
+    guestType: { $ne: "PAX" },
+    roomNumber: { $in: rooms.map((room) => room._id) },
+  }).select("roomNumber guestName bookingNumber bookingNo");
+
+  const activeByRoom = new Map(activeCheckins.map((item) => [String(item.roomNumber), item]));
+  const normalizedRooms = rooms
+    .map((room) => {
+      const activeCheckin = activeByRoom.get(String(room._id));
+      if (!activeCheckin) return room;
+
+      const objectRoom = room.toObject();
+      return {
+        ...objectRoom,
+        status: "occupied",
+        guestName: activeCheckin.guestName,
+        bookingNumber: activeCheckin.bookingNumber || activeCheckin.bookingNo,
+        checkinId: activeCheckin._id,
+      };
+    })
+    .filter((room) => req.query.status !== "available" || room.status === "available");
+
+  res.json({ success: true, data: { rooms: normalizedRooms } });
 }));
 
 router.get("/rooms/:roomId", asyncHandler(async (req, res) => {
@@ -532,7 +671,10 @@ router.post("/check-in/:checkInId/pax", addPaxCheckIn);
 
 // In-House Operations
 router.get("/in-house", asyncHandler(async (req, res) => {
-  const checkins = await Checkin.find({ hotelId: req.user.hotelId })
+  const checkins = await Checkin.find({ 
+    hotelId: req.user.hotelId,
+    status: { $ne: "checked-out" }
+  })
     .populate("roomNumber", "roomNumber roomType floor status hotelId")
     .populate("roomType", "name code")
     .sort({ createdAt: -1 });
@@ -558,8 +700,11 @@ router.get("/in-house", asyncHandler(async (req, res) => {
     id: item._id,
     checkinId: item._id,
     folioId: folioByCheckin.get(String(item._id))?._id || item._id,
-    bookingNo: item.bookingNo,
-    bookingId: item.bookingNo,
+    bookingNo: item.bookingNumber || item.bookingNo,
+    bookingNumber: item.bookingNumber || item.bookingNo,
+    bookingId: item.bookingNumber || item.bookingNo,
+    bookingGroupId: item.bookingGroupId || "",
+    parentGuestCheckin: item.parentGuestCheckin || null,
     roomNumber: item.roomNumber?.roomNumber,
     roomId: item.roomNumber?._id,
     guestName: item.guestName,
@@ -583,6 +728,57 @@ router.get("/in-house", asyncHandler(async (req, res) => {
       },
     },
   });
+}));
+
+router.get("/rooms/:roomId/guests", asyncHandler(async (req, res) => {
+  const { roomId } = req.params;
+  const hotelId = req.user.hotelId;
+
+  // Find active check-in for this room
+  const mainCheckin = await Checkin.findOne({
+    roomNumber: roomId,
+    hotelId,
+    guestType: { $ne: "PAX" }
+  }).sort({ createdAt: -1 });
+
+  if (!mainCheckin) {
+    return res.status(404).json({ success: false, message: "No active check-in found" });
+  }
+
+  // Find all guests for this room (Main + PAX)
+  const allGuests = await Checkin.find({
+    $or: [
+      { _id: mainCheckin._id },
+      { mainCheckin: mainCheckin._id }
+    ],
+    hotelId
+  }).select("guestName guestType _id companions");
+
+  const formatted = [];
+  
+  allGuests.forEach(g => {
+    // Add the record itself (Main or PAX)
+    formatted.push({
+      id: g._id,
+      name: g.guestName,
+      type: g.guestType === "PAX" ? "Companion" : "Main"
+    });
+
+    // Add companions from the array if any
+    if (g.companions && Array.isArray(g.companions)) {
+      g.companions.forEach(c => {
+        if (c.name) {
+          formatted.push({
+            id: g._id, // Attribute to this checkin record
+            name: c.name,
+            type: "Companion"
+          });
+        }
+      });
+    }
+  });
+
+  res.json({ success: true, data: formatted });
 }));
 
 router.post("/in-house/:folioId/shift-room", asyncHandler(async (req, res, next) => {
@@ -899,6 +1095,8 @@ router.post("/folio/:folioId/settle", asyncHandler(async (req, res) => {
       description: req.body.remarks || "Folio settlement",
       amount: toNum(payment.amount),
       totalAmount: toNum(payment.amount),
+      guestId: payment.guestId || null,
+      guestName: payment.guestName || "",
       meta: {
         paymentMode: payment.mode,
         cardType: payment.cardType,
@@ -925,15 +1123,23 @@ router.post("/folio/:folioId/settle", asyncHandler(async (req, res) => {
         });
       }
 
-      if (checkin.bookingNo) {
+      const bookingReference = checkin.bookingNumber || checkin.bookingNo;
+      if (bookingReference) {
         await Reservation.findOneAndUpdate(
-          { reservationId: checkin.bookingNo },
+          { hotelId: req.user.hotelId, $or: [{ reservationId: bookingReference }, { bookingNumber: bookingReference }] },
           { status: "checked-out" }
         );
       }
 
+      checkin.status = "checked-out";
       checkin.remarks = req.body.remarks || checkin.remarks;
       await checkin.save();
+
+      // Also mark all associated PAX as checked out
+      await Checkin.updateMany(
+        { mainCheckin: checkin._id, hotelId: req.user.hotelId },
+        { status: "checked-out", guestType: "Checked-Out" }
+      );
       
       folio.status = "closed";
       await folio.save();
@@ -944,43 +1150,6 @@ router.post("/folio/:folioId/settle", asyncHandler(async (req, res) => {
     success: true, 
     data: created, 
     checkOutPerformed: !!req.body.performCheckOut && isFullSettlement 
-  });
-}));
-
-router.post("/check-out", asyncHandler(async (req, res) => {
-  const context = await resolveFolioContext(req.body.folioId, req.user.hotelId);
-  if (!context) {
-    return res.status(404).json({ success: false, message: "Folio not found" });
-  }
-
-  const { checkin, folio } = context;
-
-  if (checkin.roomNumber) {
-    await Room.findByIdAndUpdate(checkin.roomNumber, {
-      status: "available",
-      hkStatus: "dirty",
-    });
-  }
-
-  if (checkin.bookingNo) {
-    await Reservation.findOneAndUpdate(
-      { reservationId: checkin.bookingNo },
-      { status: "checked-out" }
-    );
-  }
-
-  checkin.remarks = req.body.guestFeedback?.comments || checkin.remarks;
-  await checkin.save();
-  folio.status = "closed";
-  await folio.save();
-
-  res.json({
-    success: true,
-    data: {
-      checkOutId: `CO-${String(checkin._id).slice(-8).toUpperCase()}`,
-      bookingId: checkin.bookingNo,
-      checkOutTime: req.body.actualCheckOutTime || new Date(),
-    },
   });
 }));
 

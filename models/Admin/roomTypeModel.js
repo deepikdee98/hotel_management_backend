@@ -33,6 +33,16 @@ const roomTypeSchema = mongoose.Schema(
     required: true
   },
 
+  gstPercentage: {
+    type: Number,
+    default: 0
+  },
+
+  gstType: {
+    type: String,
+    enum: ["INCLUSIVE", "EXCLUSIVE"],
+    default: "EXCLUSIVE"
+  },
 
   status: {
     type: String,

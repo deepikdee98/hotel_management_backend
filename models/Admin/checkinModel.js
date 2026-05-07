@@ -15,6 +15,17 @@ const checkinSchema = new mongoose.Schema({
     default: null,
   },
 
+  bookingGroupId: {
+    type: String,
+    index: true,
+  },
+
+  parentGuestCheckin: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Checkin",
+    default: null,
+  },
+
   title: String,
   guestName: { type: String, required: true },
 
@@ -35,8 +46,25 @@ const checkinSchema = new mongoose.Schema({
   city: String,
   zip: String,
 
-  referredBy: String,
-  referredName: String,
+  referredByType: {
+    type: String,
+    enum: ["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"],
+    default: "Walk-in"
+  },
+  referredById: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
+  },
+  referredByName: String,
+  stayType: {
+    type: String,
+    enum: ["Walk-in", "In-house", "Complimentary"],
+    default: "Walk-in"
+  },
+  amount: {
+    type: Number,
+    default: 0
+  },
   arrivalFrom: String,
   departureTo: String,
   purposeOfVisit: String,
@@ -77,10 +105,39 @@ const checkinSchema = new mongoose.Schema({
   planCharges: Number,
   foodCharges: Number,
   discount: Number,
+  gstPercentage: {
+    type: Number,
+    default: 0
+  },
+  gstType: {
+    type: String,
+    enum: ["INCLUSIVE", "EXCLUSIVE"],
+    default: "EXCLUSIVE"
+  },
+  gstAmount: {
+    type: Number,
+    default: 0
+  },
   noOfBeds: Number,
   adultMale: Number,
   adultFemale: Number,
   children: Number,
+  totalPax: Number,
+  status: {
+    type: String,
+    enum: ["checked-in", "checked-out"],
+    default: "checked-in"
+  },
+
+  services: [{
+    serviceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Service"
+    },
+    name: String,
+    price: Number,
+    chargeType: String
+  }],
 
   guestType: {
     type: String,
@@ -95,6 +152,7 @@ const checkinSchema = new mongoose.Schema({
   },
 
   bookingNo: String,
+  bookingNumber: String,
   paymentMode: String,
   advanceAmount: Number,
   ledgerAccount: String,
@@ -104,6 +162,8 @@ const checkinSchema = new mongoose.Schema({
   companions: [{
     name: String,
     mobile: String,
+    gender: String,
+    type: String,
     idType: String,
     idNumber: String,
     _id: false
@@ -130,5 +190,7 @@ const checkinSchema = new mongoose.Schema({
 
 checkinSchema.index({ hotelId: 1, roomNumber: 1, createdAt: -1 });
 checkinSchema.index({ hotelId: 1, bookingNo: 1 });
+checkinSchema.index({ hotelId: 1, bookingNumber: 1 }, { unique: true, sparse: true });
+checkinSchema.index({ hotelId: 1, bookingGroupId: 1 });
 
 module.exports = mongoose.model("Checkin", checkinSchema);

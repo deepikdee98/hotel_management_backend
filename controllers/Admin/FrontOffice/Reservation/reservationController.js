@@ -1,6 +1,7 @@
 const Reservation = require("../../../../models/Admin/reservationModel");
 const Room = require("../../../../models/Admin/roomModel");
 const mongoose = require("mongoose");
+const generateBookingNumber = require("../Reception/CheckIn/generateBookingNumber");
 
 // @desc Get Reservations 
 // @route GET /admin/reservations 
@@ -17,6 +18,7 @@ const getReservations = async (req, res) => {
       query.$or = [
         { guestName: { $regex: search, $options: "i" } },
         { reservationId: { $regex: search, $options: "i" } },
+        { bookingNumber: { $regex: search, $options: "i" } },
         { roomNumber: { $regex: search, $options: "i" } }
       ];
     }
@@ -112,8 +114,11 @@ const createReservation = async (req, res) => {
       });
     }
 
+    const generatedBooking = await generateBookingNumber(req.user.hotelId);
+
     const reservation = await Reservation.create({
       reservationId: "RES-" + Date.now(),
+      bookingNumber: generatedBooking.bookingNumber,
       hotelId: req.user.hotelId,
       guestName,
       phone,
@@ -282,7 +287,7 @@ const getReservationById = async (req, res) => {
     if (mongoose.Types.ObjectId.isValid(id)) {
       query._id = id;
     } else {
-      query.reservationId = id;
+      query.$or = [{ reservationId: id }, { bookingNumber: id }];
     }
 
     const reservation = await Reservation.findOne(query)

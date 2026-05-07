@@ -1,184 +1,167 @@
-const ServiceCode = require("../../../../models/Admin/ServiceCodeModel");
+const Service = require("../../../../models/Admin/serviceModel");
 
+const mapServiceToLegacy = (service) => ({
+  ...service.toObject(),
+  serviceName: service.name,
+  defaultRate: service.defaultPrice,
+  gst: service.gstPercentage,
+});
 
-// @desc    Get Service Codes
-// @route   GET /admin/setup/service-codes
-// @access  Private (Hotel Admin)
 const getServiceCodes = async (req, res) => {
   try {
-
-    const serviceCodes = await ServiceCode.find({
-      hotelId: req.user.hotelId
-    });
-
-    res.json(serviceCodes);
-
+    const services = await Service.find({ hotelId: req.user.hotelId });
+    const mapped = services.map(mapServiceToLegacy);
+    res.json(mapped);
   } catch (error) {
-
     res.status(500).json({
-      message: "Failed to fetch service codes"
+      message: "Failed to fetch service codes",
+      error: error.message,
     });
-
   }
 };
 
-
-
-// @desc    Create Service Code
-// @route   POST /admin/setup/service-codes
-// @access  Private (Hotel Admin)
 const createServiceCode = async (req, res) => {
   try {
-
     const { code, serviceName, category, defaultRate, gst } = req.body;
 
     if (!code || !serviceName || !category) {
       return res.status(400).json({
-        message: "Code, service name and category are required"
+        message: "Code, service name and category are required",
       });
     }
 
-    const existing = await ServiceCode.findOne({ code });
-
+    const existing = await Service.findOne({ code, hotelId: req.user.hotelId });
     if (existing) {
       return res.status(400).json({
-        message: "Service code already exists"
+        message: "Service code already exists",
       });
     }
 
-    const serviceCode = await ServiceCode.create({
+    const service = await Service.create({
+      name: serviceName,
       code,
-      serviceName,
       category,
-      defaultRate,
-      gst,
-      hotelId: req.user.hotelId
+      defaultPrice: Number(defaultRate || 0),
+      gstApplicable: Number(gst || 0) > 0,
+      gstPercentage: Number(gst || 0),
+      gstType: "EXCLUSIVE",
+      hotelId: req.user.hotelId,
     });
 
     res.status(201).json({
       message: "Service code created successfully",
-      serviceCode
+      serviceCode: mapServiceToLegacy(service),
     });
-
   } catch (error) {
-
     res.status(500).json({
-      message: "Failed to create service code"
+      message: "Failed to create service code",
+      error: error.message,
     });
-
   }
 };
 
-
-
-// @desc    Update Service Code
-// @route   PUT /admin/setup/service-codes/:id
-// @access  Private (Hotel Admin)
 const updateServiceCode = async (req, res) => {
   try {
+    const updates = {
+      ...req.body,
+      name: req.body.serviceName || req.body.name,
+      defaultPrice:
+        typeof req.body.defaultRate !== "undefined"
+          ? Number(req.body.defaultRate)
+          : undefined,
+      gstPercentage:
+        typeof req.body.gst !== "undefined"
+          ? Number(req.body.gst)
+          : undefined,
+    };
 
-    const updated = await ServiceCode.findByIdAndUpdate(
+    const updated = await Service.findByIdAndUpdate(
       req.params.id,
-      req.body,
+      updates,
       { new: true }
     );
 
     if (!updated) {
       return res.status(404).json({
-        message: "Service code not found"
+        message: "Service code not found",
       });
     }
 
     res.json({
       message: "Service code updated",
-      updated
+      updated: mapServiceToLegacy(updated),
     });
-
   } catch (error) {
-
     res.status(500).json({
-      message: "Failed to update service code"
+      message: "Failed to update service code",
+      error: error.message,
     });
-
   }
 };
 
-
-
-// @desc    Delete Service Code
-// @route   DELETE /admin/setup/service-codes/:id
-// @access  Private (Hotel Admin)
 const deleteServiceCode = async (req, res) => {
   try {
+    const service = await Service.findByIdAndUpdate(
+      req.params.id,
+      { status: "inactive" },
+      { new: true }
+    );
 
-    const serviceCode = await ServiceCode.findByIdAndDelete(req.params.id);
-
-    if (!serviceCode) {
+    if (!service) {
       return res.status(404).json({
-        message: "Service code not found"
+        message: "Service code not found",
       });
     }
 
     res.json({
-      message: "Service code deleted"
+      message: "Service code deactivated",
     });
-
   } catch (error) {
-
     res.status(500).json({
-      message: "Failed to delete service code"
+      message: "Failed to delete service code",
+      error: error.message,
     });
-
   }
 };
 
-
-
-// @desc    Update Service Code Status
-// @route   PATCH /admin/setup/service-codes/:id/status
-// @access  Private (Hotel Admin)
 const updateServiceCodeStatus = async (req, res) => {
   try {
-
     const { status } = req.body;
 
     if (!status) {
       return res.status(400).json({
-        message: "Status is required"
+        message: "Status is required",
       });
     }
 
-    const serviceCode = await ServiceCode.findByIdAndUpdate(
+    const service = await Service.findByIdAndUpdate(
       req.params.id,
       { status },
       { new: true }
     );
 
-    if (!serviceCode) {
+    if (!service) {
       return res.status(404).json({
-        message: "Service code not found"
+        message: "Service code not found",
       });
     }
 
     res.json({
       message: "Service code status updated",
-      serviceCode
+      serviceCode: mapServiceToLegacy(service),
     });
-
   } catch (error) {
-
     res.status(500).json({
-      message: "Failed to update service code status"
+      message: "Failed to update service code status",
+      error: error.message,
     });
-
   }
 };
-
 
 module.exports = {
   getServiceCodes,
   createServiceCode,
   updateServiceCode,
   deleteServiceCode,
-  updateServiceCodeStatus
+  updateServiceCodeStatus,
 };

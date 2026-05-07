@@ -25,6 +25,12 @@ const roomAdvanceSchema = new mongoose.Schema(
     type: String
   },
 
+  guestId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Checkin",
+    required: true
+  },
+
   guestName: {
     type: String
   },

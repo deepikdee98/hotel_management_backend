@@ -18,6 +18,7 @@ const createRoomAdvance = async (req, res) => {
 
     const {
       roomNumber,
+      guestId,
       advanceAmount,
       paymentMode,
       ledgerAccount,
@@ -33,6 +34,13 @@ const createRoomAdvance = async (req, res) => {
       });
     }
 
+    if (!guestId) {
+      return res.status(400).json({
+        success: false,
+        message: "Guest selection is required"
+      });
+    }
+
     const room = await Room.findById(roomNumber);
 
     if (!room) {
@@ -42,20 +50,21 @@ const createRoomAdvance = async (req, res) => {
       });
     }
 
-    const checkin = await Checkin.findOne({ roomNumber }).sort({ createdAt: -1 });
+    const checkin = await Checkin.findById(guestId);
 
     if (!checkin) {
       return res.status(404).json({
         success: false,
-        message: "No active check-in found for this room"
+        message: "Guest not found"
       });
     }
 
     const advance = await RoomAdvance.create({
       hotelId: req.user.hotelId,
       checkin: checkin._id,
+      guestId: checkin._id,
       roomNumber,
-      bookingNo: checkin._id,
+      bookingNo: checkin.bookingNumber || checkin.bookingNo || checkin._id,
       guestName: checkin.guestName,
       advanceAmount,
       paymentMode,

@@ -1,5 +1,6 @@
 const Reservation = require("../../models/Admin/reservationModel");
 const Room = require("../../models/Admin/roomModel");
+const generateBookingNumber = require("../Admin/FrontOffice/Reception/CheckIn/generateBookingNumber");
 
 // @desc Staff Reservations
 // @route GET /api/staff/reservations
@@ -46,6 +47,8 @@ exports.getStaffReservations = async (req, res) => {
 
     const formatted = reservations.map((r) => ({
       id: r._id,
+      bookingNumber: r.bookingNumber || r.reservationId,
+      reservationId: r.reservationId,
       guestName: r.guestName,
       room: r.room?.roomNumber,
       checkIn: r.checkInDate,
@@ -132,8 +135,11 @@ exports.createStaffReservation = async (req, res) => {
       });
     }
 
+    const generatedBooking = await generateBookingNumber(hotelId);
+
     const reservation = await Reservation.create({
       reservationId: "RES-" + Date.now(),
+      bookingNumber: generatedBooking.bookingNumber,
       hotelId,
       guestName,
       phone,

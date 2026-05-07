@@ -17,10 +17,26 @@ const guestSchema = new mongoose.Schema(
 
     email: String,
     phone: String,
-
+    title: String,
+    gender: String,
+    country: String,
+    state: String,
+    city: String,
+    zip: String,
+    company: String,
+    gstNumber: String,
+    referredByType: {
+      type: String,
+      enum: ["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"],
+      default: "Walk-in"
+    },
+    referredById: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null
+    },
+    referredByName: String,
     idType: {
       type: String,
-      enum: ["passport", "aadhaar", "driving-license", "other"],
       default: "other",
     },
 

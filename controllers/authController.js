@@ -33,6 +33,9 @@ const getEffectiveModules = async (user) => {
 };
 
 const buildAccessToken = (user, modules) => {
+  if (!process.env.ACCESS_TOKEN_SECRET) {
+    throw new Error("ACCESS_TOKEN_SECRET is not defined in environment variables");
+  }
   return jwt.sign(
     {
       user: {

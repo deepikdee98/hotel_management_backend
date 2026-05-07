@@ -5,16 +5,18 @@ const ServiceTransaction = require("../../../../../models/Admin/serviceTransacti
 // @access  Private (Hotel Admin)
 const addService = async (req, res) => {
   try {
-    const { serviceName, roomId, qty, amount, total, remark, gstInclusive } = req.body;
+    const { serviceName, serviceId, serviceCodeId, roomId, qty, amount, total, remark, gstInclusive } = req.body;
 
     if (!serviceName || !roomId || !qty || !amount) {
       return res.status(400).json({ message: "Missing fields" });
     }
 
-    const finalTotal = total || (qty * amount);
+    const finalTotal = total || qty * amount;
+    const serviceRef = serviceId || serviceCodeId;
 
     const data = await ServiceTransaction.create({
       hotelId: req.user.hotelId,
+      service: serviceRef,
       serviceName,
       room: roomId,
       qty,
@@ -38,6 +40,7 @@ const getServices = async (req, res) => {
   try {
     const data = await ServiceTransaction.find({ hotelId: req.user.hotelId })
       .populate("room", "roomNumber")
+      .populate("service", "name code category gstPercentage gstType defaultPrice")
       .sort({ createdAt: -1 });
 
     res.json({ success: true, data });
@@ -66,13 +69,15 @@ const deleteService = async (req, res) => {
 // @access  Private (Hotel Admin)
 const updateService = async (req, res) => {
   try {
-    const { serviceName, roomId, qty, amount, total, remark, gstInclusive } = req.body;
+    const { serviceName, serviceId, serviceCodeId, roomId, qty, amount, total, remark, gstInclusive } = req.body;
 
-    const finalTotal = total || (qty * amount);
+    const finalTotal = total || qty * amount;
+    const serviceRef = serviceId || serviceCodeId;
 
     const data = await ServiceTransaction.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       {
+        service: serviceRef,
         serviceName,
         room: roomId,
         qty,

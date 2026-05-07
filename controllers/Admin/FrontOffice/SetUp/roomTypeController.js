@@ -28,7 +28,7 @@ const getRoomTypes = async (req, res) => {
 // @access  Private (Hotel Admin)
 const createRoomType = async (req, res) => {
   try {
-    const { name, code, baseRate, maxOccupancy, status } = req.body;
+    const { name, code, baseRate, maxOccupancy, status, gstPercentage, gstType } = req.body;
 
     if (!name || !code || baseRate == null || maxOccupancy == null) {
       return res.status(400).json({
@@ -53,11 +53,22 @@ const createRoomType = async (req, res) => {
       });
     }
 
+    // GST Calculation logic
+    const percentage = Number(gstPercentage) || 0;
+    const type = gstType || "EXCLUSIVE";
+    let calculatedBaseRate = Number(baseRate);
+
+    if (percentage > 0 && type === "INCLUSIVE") {
+      calculatedBaseRate = (calculatedBaseRate * 100) / (100 + percentage);
+    }
+
     const roomType = await RoomType.create({
       name,
       code,
-      baseRate,
+      baseRate: calculatedBaseRate,
       maxOccupancy,
+      gstPercentage: percentage,
+      gstType: type,
       status: status || "active",
       hotelId: req.user.hotelId 
     });
@@ -83,7 +94,7 @@ const createRoomType = async (req, res) => {
 const updateRoomType = async (req, res) => {
 
   try {
-    const { status } = req.body;
+    const { status, baseRate, gstPercentage, gstType } = req.body;
 
     if (status && !["active", "inactive"].includes(status)) {
       return res.status(400).json({
@@ -91,17 +102,40 @@ const updateRoomType = async (req, res) => {
       });
     }
 
-    const updated = await RoomType.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
-
-    if (!updated) {
+    const existingRoomType = await RoomType.findById(req.params.id);
+    if (!existingRoomType) {
       return res.status(404).json({
         message: "Room type not found"
       });
     }
+
+    // Logic to recalculate baseRate if relevant fields are updated
+    let updateData = { ...req.body };
+    
+    // Check if we need to recalculate baseRate
+    // We only recalculate if baseRate is provided in the body
+    // If only gstPercentage or gstType is provided without baseRate, 
+    // it's ambiguous if we should use the stored baseRate (which is already calculated).
+    // Usually, updating GST config implies the baseRate should be recalculated from the "raw" price.
+    // However, since we overwrite baseRate, we don't have the "raw" price anymore.
+    // The requirement says "Add new fields as optional (with defaults)" and "Refactor only where required".
+    
+    if (baseRate != null) {
+      const percentage = gstPercentage != null ? Number(gstPercentage) : existingRoomType.gstPercentage;
+      const type = gstType || existingRoomType.gstType;
+      let calculatedBaseRate = Number(baseRate);
+
+      if (percentage > 0 && type === "INCLUSIVE") {
+        calculatedBaseRate = (calculatedBaseRate * 100) / (100 + percentage);
+      }
+      updateData.baseRate = calculatedBaseRate;
+    }
+
+    const updated = await RoomType.findByIdAndUpdate(
+      req.params.id,
+      updateData,
+      { new: true }
+    );
 
     res.json(updated);
 

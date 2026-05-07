@@ -1,9 +1,5 @@
-require("dotenv").config();
-const mongoose = require("mongoose");
 const SetupOption = require("../models/Admin/setupOptionModel");
 const Hotel = require("../models/SuperAdmin/hotelModel");
-
-const uri = process.env.CONNECTION_STRING || "mongodb://127.0.0.1:27017/hotel_management";
 
 const defaultOptions = [
   { module: "payment", type: "paymentMode", values: ["Cash", "Card", "UPI"] },
@@ -27,54 +23,62 @@ const defaultOptions = [
 
 async function seedForHotel(hotelId) {
   let inserted = 0;
+  let skipped = 0;
 
   for (const group of defaultOptions) {
     for (const value of group.values) {
-      const exists = await SetupOption.exists({
-        hotelId,
-        type: group.type,
-        normalizedValue: value.toLowerCase(),
-      });
+      const normalizedValue = value.toLowerCase();
+      const result = await SetupOption.updateOne(
+        { hotelId: String(hotelId), type: group.type, normalizedValue },
+        {
+          $setOnInsert: {
+            hotelId: String(hotelId),
+            module: group.module,
+            type: group.type,
+            value,
+            normalizedValue,
+            isActive: true,
+          },
+        },
+        { upsert: true }
+      );
 
-      if (!exists) {
-        await SetupOption.create({
-          hotelId,
-          module: group.module,
-          type: group.type,
-          value,
-          isActive: true,
-        });
-        inserted += 1;
-      }
+      if (result.upsertedCount) inserted += 1;
+      else skipped += 1;
     }
   }
 
-  console.log(inserted ? `Seeded ${inserted} setup options for hotel ${hotelId}.` : `Setup options already exist for hotel ${hotelId}.`);
+  return { hotelId: String(hotelId), inserted, skipped };
 }
 
-async function seedSetupOptions() {
-  try {
-    await mongoose.connect(uri);
+module.exports = async function seedSetupOptions(options = {}) {
+  const requestedHotelId = options.hotelId || process.env.HOTEL_ID;
+  const hotelIds = requestedHotelId
+    ? [String(requestedHotelId)]
+    : (await Hotel.find({}, "_id")).map((hotel) => String(hotel._id));
 
-    const requestedHotelId = process.env.HOTEL_ID || process.argv[2];
-    const hotelIds = requestedHotelId
-      ? [String(requestedHotelId)]
-      : (await Hotel.find({}, "_id")).map((hotel) => String(hotel._id));
-
-    if (!hotelIds.length) {
-      console.log("No hotels found. Create a hotel or pass HOTEL_ID before seeding setup options.");
-      return;
-    }
-
-    for (const hotelId of hotelIds) {
-      await seedForHotel(hotelId);
-    }
-  } catch (error) {
-    console.error("Failed to seed setup options:", error.message);
-    process.exitCode = 1;
-  } finally {
-    await mongoose.connection.close();
+  if (!hotelIds.length) {
+    return {
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      message: "No hotels found. Create a hotel or pass HOTEL_ID to seed setup options.",
+    };
   }
-}
 
-seedSetupOptions();
+  const results = [];
+  for (const hotelId of hotelIds) {
+    results.push(await seedForHotel(hotelId));
+  }
+
+  const created = results.reduce((sum, item) => sum + item.inserted, 0);
+  const skipped = results.reduce((sum, item) => sum + item.skipped, 0);
+
+  return {
+    created,
+    updated: 0,
+    skipped,
+    details: results,
+    message: `Setup options processed for ${hotelIds.length} hotel(s). Created: ${created}. Skipped: ${skipped}.`,
+  };
+};

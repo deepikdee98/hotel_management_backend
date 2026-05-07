@@ -24,6 +24,12 @@ const invoiceSchema = new mongoose.Schema(
       index: true,
     },
     invoiceNumber: { type: String, required: true, unique: true },
+    folioId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Folio",
+      default: null,
+      index: true,
+    },
     invoiceType: String,
     customerId: String,
     bookingId: String,
@@ -32,6 +38,8 @@ const invoiceSchema = new mongoose.Schema(
     items: [invoiceItemSchema],
     subtotal: { type: Number, default: 0 },
     totalTax: { type: Number, default: 0 },
+    cgst: { type: Number, default: 0 },
+    sgst: { type: Number, default: 0 },
     grandTotal: { type: Number, default: 0 },
     amountPaid: { type: Number, default: 0 },
     balanceDue: { type: Number, default: 0 },
@@ -39,6 +47,7 @@ const invoiceSchema = new mongoose.Schema(
     termsAndConditions: String,
     sent: { type: Boolean, default: false },
     sentMeta: { type: Object, default: {} },
+    pdfPath: { type: String, default: "" },
   },
   { timestamps: true }
 );

@@ -13,6 +13,11 @@ const reservationSchema = new mongoose.Schema({
     sparse: true
   },
 
+  bookingNumber: {
+    type: String,
+    sparse: true
+  },
+
   guestName: {
     type: String,
     required: true
@@ -58,6 +63,21 @@ const reservationSchema = new mongoose.Schema({
   },
 
   ratePlan: String,
+  referredByType: {
+    type: String,
+    enum: ["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"],
+    default: "Walk-in"
+  },
+  referredById: {
+    type: mongoose.Schema.Types.ObjectId,
+    default: null
+  },
+  referredByName: String,
+  stayType: {
+    type: String,
+    enum: ["Walk-in", "In-house", "Complimentary"],
+    default: "Walk-in"
+  },
   bookingSource: String,
 
   advanceAmount: {
@@ -84,5 +104,6 @@ const reservationSchema = new mongoose.Schema({
 reservationSchema.index({ hotelId: 1, room: 1 });
 reservationSchema.index({ hotelId: 1, status: 1 });
 reservationSchema.index({ checkInDate: 1, checkOutDate: 1 });
+reservationSchema.index({ hotelId: 1, bookingNumber: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("Reservation", reservationSchema);

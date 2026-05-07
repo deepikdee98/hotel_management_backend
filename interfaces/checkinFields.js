@@ -10,6 +10,8 @@ const checkinFields = [
   "nationality",
   "gstNumber",
   "registerNo",
+  "bookingGroupId",
+  "parentGuestCheckin",
   "idProofType",
   "idProofNumber",
 
@@ -20,8 +22,11 @@ const checkinFields = [
   "zip",
 
   // Booking Details
-  "referredBy",
-  "referredName",
+  "referredByType",
+  "referredById",
+  "referredByName",
+  "stayType",
+  "amount",
   "arrivalFrom",
   "departureTo",
   "purposeOfVisit",
@@ -44,9 +49,13 @@ const checkinFields = [
   "planCharges",
   "foodCharges",
   "discount",
+  "gstPercentage",
+  "gstType",
+  "gstAmount",
   "guestType",
   "mainCheckin",
   "bookingNo",
+  "bookingNumber",
   "noOfBeds",
 
   "adultMale",
@@ -64,8 +73,8 @@ const checkinFields = [
   // Companions and Vehicle
   "companions",
   "vehicleNo",
-  "vehicleType"
-
+  "vehicleType",
+  "services"
 ];
 
 module.exports = checkinFields;
