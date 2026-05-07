@@ -12,6 +12,15 @@ const CHECKED_OUT_STATUSES = ["checked-out", "CHECKED_OUT"];
 const BOOKED_STATUSES = ["confirmed", "booked", "BOOKED"];
 const CANCELLED_STATUSES = ["cancelled", "CANCELLED", "no-show", "NO_SHOW"];
 
+const AUDIT_STEPS = [
+  { id: "postRoomCharges", label: "Post pending room tariffs" },
+  { id: "handleNoShows", label: "Process no-show reservations" },
+  { id: "updateRoomStatus", label: "Update room availability" },
+  { id: "validateTransactions", label: "Validate daily transactions" },
+  { id: "generateReport", label: "Generate daily revenue report" },
+  { id: "rollBusinessDate", label: "Roll business date forward" },
+];
+
 const normalizeDate = (value) => {
   const date = new Date(value || new Date());
   date.setUTCHours(0, 0, 0, 0);
@@ -44,6 +53,24 @@ const recordStepError = async ({ errors, hotelId, businessDateKey, step, error, 
   const message = `${step}: ${error.message}`;
   errors.push(message);
   await logAuditEvent({ hotelId, businessDateKey, step, message, level: "error", context });
+};
+
+const updateReportStep = async (reportId, stepId, status, error = null) => {
+  const update = {
+    $set: {
+      "steps.$[elem].status": status,
+    },
+  };
+  if (status === "completed" || status === "failed") {
+    update.$set["steps.$[elem].completedAt"] = new Date();
+  }
+  if (error) {
+    update.$set["steps.$[elem].error"] = error;
+  }
+
+  await NightAuditReport.findByIdAndUpdate(reportId, update, {
+    arrayFilters: [{ "elem.id": stepId }],
+  });
 };
 
 const getOrCreateSystemConfig = async (hotelId) => {
@@ -257,7 +284,7 @@ const validateTransactions = async ({ hotelId, businessDateKey, errors }) => {
   return inconsistencies;
 };
 
-const generateReport = async ({ hotelId, businessDate, businessDateKey, startedAt, triggeredBy, triggerSource, errors, stepResults }) => {
+const generateReport = async ({ hotelId, businessDate, businessDateKey, startedAt, triggeredBy, triggerSource, errors, stepResults, reportId }) => {
   const { start, end } = getDayBounds(businessDate);
 
   const [transactionStats, roomCount, checkedInCount, totalBookings] = await Promise.all([
@@ -286,10 +313,7 @@ const generateReport = async ({ hotelId, businessDate, businessDateKey, startedA
     }),
   ]);
 
-  const reportPayload = {
-    hotelId,
-    date: businessDate,
-    businessDateKey,
+  const updatePayload = {
     totalRevenue: Number(transactionStats[0]?.totalRevenue || 0),
     totalBookings,
     occupancyRate: roomCount ? Number(((checkedInCount / roomCount) * 100).toFixed(2)) : 0,
@@ -297,10 +321,7 @@ const generateReport = async ({ hotelId, businessDate, businessDateKey, startedA
     transactionsCount: Number(transactionStats[0]?.transactionsCount || 0),
     errors,
     status: errors.length ? "completed_with_errors" : "completed",
-    startedAt,
     completedAt: new Date(),
-    triggeredBy: triggeredBy || null,
-    triggerSource,
     metadata: {
       checkedInCount,
       roomCount,
@@ -311,7 +332,7 @@ const generateReport = async ({ hotelId, businessDate, businessDateKey, startedA
     },
   };
 
-  return NightAuditReport.create(reportPayload);
+  return NightAuditReport.findByIdAndUpdate(reportId, updatePayload, { new: true });
 };
 
 const rollBusinessDate = async ({ hotelId, businessDate, businessDateKey, errors }) => {
@@ -355,12 +376,34 @@ const runNightAudit = async ({ hotelId, triggeredBy = null, requestedBusinessDat
   const businessDate = normalizeDate(requestedBusinessDate || systemConfig.currentBusinessDate);
   const businessDateKey = getBusinessDateKey(businessDate);
 
-  const existingReport = await NightAuditReport.findOne({ hotelId, businessDateKey });
-  if (existingReport) {
+  let report = await NightAuditReport.findOne({ hotelId, businessDateKey });
+  if (report && (report.status === "completed" || report.status === "completed_with_errors")) {
     return {
       alreadyRun: true,
-      report: existingReport,
+      report,
     };
+  }
+
+  // Create or reset in_progress report
+  if (!report) {
+    report = await NightAuditReport.create({
+      hotelId,
+      date: businessDate,
+      businessDateKey,
+      status: "in_progress",
+      startedAt,
+      triggeredBy,
+      triggerSource,
+      steps: AUDIT_STEPS.map((s) => ({ ...s, status: "pending" })),
+    });
+  } else {
+    report.status = "in_progress";
+    report.startedAt = startedAt;
+    report.triggeredBy = triggeredBy;
+    report.triggerSource = triggerSource;
+    report.steps = AUDIT_STEPS.map((s) => ({ ...s, status: "pending" }));
+    report.errors = [];
+    await report.save();
   }
 
   const errors = [];
@@ -375,17 +418,40 @@ const runNightAudit = async ({ hotelId, triggeredBy = null, requestedBusinessDat
   });
 
   try {
+    await updateReportStep(report._id, "postRoomCharges", "in_progress");
     stepResults.postRoomCharges = await postRoomCharges({ hotelId, businessDate, businessDateKey, errors });
+    await updateReportStep(report._id, "postRoomCharges", "completed");
   } catch (error) {
     await recordStepError({ errors, hotelId, businessDateKey, step: "postRoomCharges", error });
+    await updateReportStep(report._id, "postRoomCharges", "failed", error.message);
   }
 
-  stepResults.noShowCount = await handleNoShows({ hotelId, businessDate, businessDateKey, errors });
-  stepResults.roomStatusUpdates = await updateRoomStatus({ hotelId, businessDateKey, errors });
-  stepResults.inconsistencies = await validateTransactions({ hotelId, businessDateKey, errors });
-
-  let report;
   try {
+    await updateReportStep(report._id, "handleNoShows", "in_progress");
+    stepResults.noShowCount = await handleNoShows({ hotelId, businessDate, businessDateKey, errors });
+    await updateReportStep(report._id, "handleNoShows", "completed");
+  } catch (error) {
+    await updateReportStep(report._id, "handleNoShows", "failed", error.message);
+  }
+
+  try {
+    await updateReportStep(report._id, "updateRoomStatus", "in_progress");
+    stepResults.roomStatusUpdates = await updateRoomStatus({ hotelId, businessDateKey, errors });
+    await updateReportStep(report._id, "updateRoomStatus", "completed");
+  } catch (error) {
+    await updateReportStep(report._id, "updateRoomStatus", "failed", error.message);
+  }
+
+  try {
+    await updateReportStep(report._id, "validateTransactions", "in_progress");
+    stepResults.inconsistencies = await validateTransactions({ hotelId, businessDateKey, errors });
+    await updateReportStep(report._id, "validateTransactions", "completed");
+  } catch (error) {
+    await updateReportStep(report._id, "validateTransactions", "failed", error.message);
+  }
+
+  try {
+    await updateReportStep(report._id, "generateReport", "in_progress");
     report = await generateReport({
       hotelId,
       businessDate,
@@ -395,24 +461,28 @@ const runNightAudit = async ({ hotelId, triggeredBy = null, requestedBusinessDat
       triggerSource,
       errors,
       stepResults,
+      reportId: report._id,
     });
+    await updateReportStep(report._id, "generateReport", "completed");
   } catch (error) {
+    await updateReportStep(report._id, "generateReport", "failed", error.message);
     if (error.code === 11000) {
       report = await NightAuditReport.findOne({ hotelId, businessDateKey });
       return { alreadyRun: true, report };
     }
-
     throw error;
   }
 
-  await rollBusinessDate({ hotelId, businessDate, businessDateKey, errors });
-
-  if (errors.length !== report.errors.length) {
-    report.errors = errors;
-    report.status = errors.length ? "completed_with_errors" : "completed";
-    report.completedAt = new Date();
-    await report.save();
+  try {
+    await updateReportStep(report._id, "rollBusinessDate", "in_progress");
+    await rollBusinessDate({ hotelId, businessDate, businessDateKey, errors });
+    await updateReportStep(report._id, "rollBusinessDate", "completed");
+  } catch (error) {
+    await updateReportStep(report._id, "rollBusinessDate", "failed", error.message);
   }
+
+  // Refresh report for final status if needed
+  report = await NightAuditReport.findById(report._id);
 
   return {
     alreadyRun: false,

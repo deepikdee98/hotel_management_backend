@@ -42,9 +42,22 @@ const nightAuditReportSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["completed", "completed_with_errors", "failed"],
-      default: "completed",
+      enum: ["in_progress", "completed", "completed_with_errors", "failed"],
+      default: "in_progress",
     },
+    steps: [
+      {
+        id: String,
+        label: String,
+        status: {
+          type: String,
+          enum: ["pending", "in_progress", "completed", "failed"],
+          default: "pending",
+        },
+        completedAt: Date,
+        error: String,
+      },
+    ],
     startedAt: {
       type: Date,
       default: Date.now,

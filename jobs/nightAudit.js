@@ -4,16 +4,28 @@ const Hotel = require("../models/SuperAdmin/hotelModel");
 const SystemConfig = require("../models/SystemConfig");
 const { runNightAudit } = require("../services/nightAuditService");
 
-const getCurrentTimeKey = (date = new Date()) => {
-  const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
-  return `${hours}:${minutes}`;
+/**
+ * Normalizes a date to YYYY-MM-DD string for comparison.
+ */
+const normalizeDateKey = (value) => {
+  if (!value) return null;
+  const date = new Date(value);
+  // We use local date string for business logic consistency with HH:mm comparison
+  return date.toISOString().slice(0, 10);
 };
 
-const normalizeDateKey = (value) => {
-  const date = new Date(value);
-  date.setUTCHours(0, 0, 0, 0);
-  return date.toISOString().slice(0, 10);
+/**
+ * Checks if current time is past or at configured time (HH:mm)
+ */
+const isTimeReached = (configuredTime, now = new Date()) => {
+  if (!configuredTime) return true;
+  const [targetH, targetM] = configuredTime.split(":").map(Number);
+  const nowH = now.getHours();
+  const nowM = now.getMinutes();
+
+  if (nowH > targetH) return true;
+  if (nowH === targetH && nowM >= targetM) return true;
+  return false;
 };
 
 const shouldRunNightAuditNow = (systemConfig, now = new Date()) => {
@@ -21,11 +33,13 @@ const shouldRunNightAuditNow = (systemConfig, now = new Date()) => {
     return false;
   }
 
+  // 1. Check if it's time to run
   const configuredTime = systemConfig.nightAuditTime || "00:00";
-  if (configuredTime !== getCurrentTimeKey(now)) {
+  if (!isTimeReached(configuredTime, now)) {
     return false;
   }
 
+  // 2. Check if we already ran audit for this business date
   if (!systemConfig.lastNightAuditAt) {
     return true;
   }
@@ -33,6 +47,8 @@ const shouldRunNightAuditNow = (systemConfig, now = new Date()) => {
   const lastAuditDateKey = normalizeDateKey(systemConfig.lastNightAuditAt);
   const currentBusinessDateKey = normalizeDateKey(systemConfig.currentBusinessDate || now);
 
+  // If last audit was done on or after current business date, don't run again.
+  // Note: runNightAudit rolls the business date forward.
   return lastAuditDateKey !== currentBusinessDateKey;
 };
 
@@ -81,7 +97,8 @@ const executeNightAuditForAllHotels = async () => {
 };
 
 const startNightAuditJob = () => {
-  cron.schedule("*/10 * * * *", async () => {
+  // Run check every minute
+  cron.schedule("* * * * *", async () => {
     try {
       const runCount = await executeNightAuditForAllHotels();
       if (runCount > 0) {
