@@ -7,7 +7,7 @@ const complaintSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     folioId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Folio",

@@ -43,7 +43,7 @@ const createAdvanceTransfer = async (req, res) => {
     }
 
     // Find source room and its active check-in
-    const fromRoomObj = await Room.findById(fromRoom);
+    const fromRoomObj = await Room.findOne({ _id: fromRoom, hotelId: req.user.hotelId });
     if (!fromRoomObj) {
       return res.status(404).json({
         success: false,
@@ -64,7 +64,7 @@ const createAdvanceTransfer = async (req, res) => {
     }
 
     // Find destination room and its active check-in
-    const toRoomObj = await Room.findById(toRoom);
+    const toRoomObj = await Room.findOne({ _id: toRoom, hotelId: req.user.hotelId });
     if (!toRoomObj) {
       return res.status(404).json({
         success: false,
@@ -293,8 +293,8 @@ const cancelAdvanceTransfer = async (req, res) => {
       sourceAdvance.advanceAmount += transfer.transferAmount;
       await sourceAdvance.save();
     } else {
-      const fromRoom = await Room.findById(transfer.fromRoomNumber);
-      const fromCheckin = await Checkin.findById(transfer.fromCheckin);
+      const fromRoom = await Room.findOne({ _id: transfer.fromRoomNumber, hotelId: req.user.hotelId });
+      const fromCheckin = await Checkin.findOne({ _id: transfer.fromCheckin, hotelId: req.user.hotelId });
       await RoomAdvance.create({
         hotelId: req.user.hotelId,
         checkin: transfer.fromCheckin,

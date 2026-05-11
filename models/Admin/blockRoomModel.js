@@ -7,7 +7,8 @@ const blockRoomSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true
+  },
     room: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Room",

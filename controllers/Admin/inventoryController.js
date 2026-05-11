@@ -47,8 +47,7 @@ const updateInventoryItem = asyncHandler(async (req, res) => {
     throw new Error("Inventory item not found");
   }
 
-  const updatedItem = await Inventory.findByIdAndUpdate(
-    req.params.id,
+  const updatedItem = await Inventory.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
     { ...req.body, lastUpdatedBy: req.user._id },
     { new: true }
   );

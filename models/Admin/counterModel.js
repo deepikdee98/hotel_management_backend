@@ -5,7 +5,7 @@ const counterSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     required: true,
     index: true,
-  },
+  immutable: true},
   date: {
     type: String, // YYYYMMDD
     required: true,

@@ -47,7 +47,7 @@ const addRoom = async (req, res) => {
                 }
             }
         }
-        const hotel = await Hotel.findById(hotelId);
+        const hotel = await Hotel.findOne({ _id: hotelId, hotelId: req.user.hotelId });
         
         const roomCount = await Room.countDocuments({ hotelId });
         

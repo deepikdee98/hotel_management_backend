@@ -139,7 +139,7 @@ const createReservation = async (req, res) => {
       totalAmount
     });
 
-    await Room.findByIdAndUpdate(roomDetails._id, {
+    await Room.findOneAndUpdate({ _id: roomDetails._id, hotelId: req.user.hotelId }, {
       status: "reserved"
     });
 
@@ -178,7 +178,7 @@ const updateReservationStatus = async (req, res) => {
       });
     }
 
-    const reservation = await Reservation.findById(req.params.id);
+    const reservation = await Reservation.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!reservation) {
       return res.status(404).json({
@@ -190,20 +190,20 @@ const updateReservationStatus = async (req, res) => {
     await reservation.save();
 
     if (status === "checked-in") {
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "occupied"
       });
     }
 
     if (status === "checked-out" || status === "cancelled") {
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "available",
         hkStatus: "dirty"
       });
     }
 
     if (status === "confirmed") {
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "reserved"
       });
     }
@@ -227,8 +227,7 @@ const updateReservationStatus = async (req, res) => {
 
 const updateReservation = async (req, res) => {
   try {
-    const updated = await Reservation.findByIdAndUpdate(
-      req.params.id,
+    const updated = await Reservation.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
       { new: true }
     );
@@ -251,7 +250,7 @@ const updateReservation = async (req, res) => {
 // @access Private (Hotel Admin)
 const deleteReservation = async (req, res) => {
   try {
-    const reservation = await Reservation.findById(req.params.id);
+    const reservation = await Reservation.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!reservation) {
       return res.status(404).json({
@@ -261,7 +260,7 @@ const deleteReservation = async (req, res) => {
 
     await reservation.deleteOne();
 
-    await Room.findByIdAndUpdate(reservation.room, {
+    await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
       status: "available"
     });
 
@@ -322,7 +321,7 @@ const cancelReservation = async (req, res) => {
     await reservation.save();
 
     if (reservation.room) {
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "available",
         hkStatus: "dirty",
       });

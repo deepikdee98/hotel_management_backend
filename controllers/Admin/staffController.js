@@ -132,7 +132,7 @@ const staffSummary = async (req, res) => {
 const updateStaff = async (req, res) => {
   try {
 
-    const staff = await User.findById(req.params.id);
+    const staff = await User.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!staff) {
       return res.status(404).json({
@@ -140,8 +140,7 @@ const updateStaff = async (req, res) => {
       });
     }
 
-    const updated = await User.findByIdAndUpdate(
-      req.params.id,
+    const updated = await User.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
       { new: true }
     ).select("-password");
@@ -175,8 +174,7 @@ const updateStaffStatus = async (req, res) => {
       });
     }
 
-    const staff = await User.findByIdAndUpdate(
-      req.params.id,
+    const staff = await User.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { isActive },
       { new: true }
     );
@@ -208,7 +206,7 @@ const updateStaffStatus = async (req, res) => {
 const deleteStaff = async (req, res) => {
   try {
 
-    const staff = await User.findByIdAndDelete(req.params.id);
+    const staff = await User.findOneAndDelete({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!staff) {
       return res.status(404).json({
@@ -241,7 +239,7 @@ const resetStaffPassword = async (req, res) => {
       });
     }
 
-    const staff = await User.findById(req.params.id);
+    const staff = await User.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!staff) {
       return res.status(404).json({

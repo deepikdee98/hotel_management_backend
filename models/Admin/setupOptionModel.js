@@ -7,7 +7,7 @@ const setupOptionSchema = new mongoose.Schema(
       required: true,
       index: true,
       trim: true,
-    },
+    immutable: true},
     module: {
       type: String,
       required: true,

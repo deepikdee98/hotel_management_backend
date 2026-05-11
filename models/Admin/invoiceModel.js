@@ -1,7 +1,9 @@
 const mongoose = require("mongoose");
 
-const invoiceItemSchema = new mongoose.Schema(
-  {
+const invoiceItemSchema = new mongoose.Schema({
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     description: String,
     quantity: { type: Number, default: 1 },
     rate: { type: Number, default: 0 },
@@ -22,8 +24,8 @@ const invoiceSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
-    invoiceNumber: { type: String, required: true, unique: true },
+    immutable: true},
+    invoiceNumber: { type: String, required: true },
     folioId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Folio",
@@ -32,6 +34,14 @@ const invoiceSchema = new mongoose.Schema(
     },
     invoiceType: String,
     customerId: String,
+    customerName: String,
+    guestName: String,
+    room: String,
+    checkIn: Date,
+    checkOut: Date,
+    companyId: String,
+    companyName: String,
+    travelAgentId: String,
     bookingId: String,
     invoiceDate: Date,
     dueDate: Date,
@@ -48,8 +58,38 @@ const invoiceSchema = new mongoose.Schema(
     sent: { type: Boolean, default: false },
     sentMeta: { type: Object, default: {} },
     pdfPath: { type: String, default: "" },
+    status: {
+      type: String,
+      enum: ["draft", "pending", "partial", "paid", "overdue", "cancelled", "refunded"],
+      default: "pending",
+      index: true,
+    },
+    billingType: {
+      type: String,
+      enum: ["guest", "split", "company", "travel_agent"],
+      default: "guest",
+      index: true,
+    },
+    splitBilling: {
+      type: Object,
+      default: {},
+    },
+    businessId: {
+      type: String,
+      default: "",
+      index: true,
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+invoiceSchema.index({ hotelId: 1, invoiceDate: -1 });
+invoiceSchema.index({ hotelId: 1, status: 1 });
+invoiceSchema.index({ hotelId: 1, invoiceNumber: 1 }, { unique: true });
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

@@ -46,7 +46,16 @@ const logAuditEvent = async ({ hotelId, businessDateKey, step, message, level = 
     console.log(prefix, message, context);
   }
 
-  await AuditLog.create({ hotelId, businessDateKey, step, message, level, context });
+  await AuditLog.create({
+    hotelId,
+    businessDateKey,
+    step,
+    message,
+    level,
+    context,
+    action: "SYSTEM",
+    module: "NIGHT_AUDIT",
+  });
 };
 
 const recordStepError = async ({ errors, hotelId, businessDateKey, step, error, context = {} }) => {

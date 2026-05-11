@@ -7,7 +7,7 @@ const housekeepingTaskSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     roomId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Room",

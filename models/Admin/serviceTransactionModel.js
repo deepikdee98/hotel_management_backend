@@ -7,7 +7,8 @@ const serviceTransactionSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true
+  },
     service: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Service",

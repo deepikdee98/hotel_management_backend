@@ -10,6 +10,7 @@ const cors = require("cors");
 const connectDb = require("./config/dbConnection");
 const errorHandler = require("./middleware/errorHandler");
 const { startNightAuditJob } = require("./jobs/nightAudit");
+const { apiLimiter, securityHeaders } = require("./middleware/securityMiddleware");
 
 connectDb();
 
@@ -48,6 +49,8 @@ app.use(
   })
 );
 
+app.use(securityHeaders);
+app.use(apiLimiter);
 app.use(express.json());
 
 // Routes

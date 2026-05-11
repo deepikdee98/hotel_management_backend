@@ -7,7 +7,7 @@ const nightAuditSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     auditDate: {
       type: String,
       required: true,

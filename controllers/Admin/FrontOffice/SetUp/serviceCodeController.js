@@ -75,8 +75,7 @@ const updateServiceCode = async (req, res) => {
           : undefined,
     };
 
-    const updated = await Service.findByIdAndUpdate(
-      req.params.id,
+    const updated = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updates,
       { new: true }
     );
@@ -101,8 +100,7 @@ const updateServiceCode = async (req, res) => {
 
 const deleteServiceCode = async (req, res) => {
   try {
-    const service = await Service.findByIdAndUpdate(
-      req.params.id,
+    const service = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status: "inactive" },
       { new: true }
     );
@@ -134,8 +132,7 @@ const updateServiceCodeStatus = async (req, res) => {
       });
     }
 
-    const service = await Service.findByIdAndUpdate(
-      req.params.id,
+    const service = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
       { new: true }
     );

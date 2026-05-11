@@ -1,13 +1,15 @@
 const mongoose = require("mongoose");
 
-const guestSchema = new mongoose.Schema(
-  {
+const guestSchema = new mongoose.Schema({
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     hotelId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
 
     fullName: {
       type: String,

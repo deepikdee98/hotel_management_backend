@@ -6,7 +6,8 @@ const roomAdvanceSchema = new mongoose.Schema(
     type: mongoose.Schema.Types.ObjectId,
     ref: "Hotel",
     required: true,
-    index: true
+    index: true,
+    immutable: true
   },
 
   checkin: {

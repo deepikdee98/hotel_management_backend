@@ -87,8 +87,7 @@ const updateRatePlan = async (req, res) => {
       });
     }
 
-    const updated = await RatePlan.findByIdAndUpdate(
-      req.params.id,
+    const updated = await RatePlan.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
       { new: true }
     );
@@ -118,7 +117,7 @@ const updateRatePlan = async (req, res) => {
 const deleteRatePlan = async (req, res) => {
   try {
 
-    const ratePlan = await RatePlan.findByIdAndDelete(req.params.id);
+    const ratePlan = await RatePlan.findOneAndDelete({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!ratePlan) {
       return res.status(404).json({
@@ -155,8 +154,7 @@ const updateRatePlanStatus = async (req, res) => {
       });
     }
 
-    const ratePlan = await RatePlan.findByIdAndUpdate(
-      req.params.id,
+    const ratePlan = await RatePlan.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
       { new: true }
     );

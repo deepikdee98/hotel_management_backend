@@ -25,7 +25,7 @@ const posOrderSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     orderNumber: { type: String, required: true, unique: true },
     folioId: {
       type: mongoose.Schema.Types.ObjectId,

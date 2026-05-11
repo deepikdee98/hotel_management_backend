@@ -7,7 +7,7 @@ const checkinSchema = new mongoose.Schema({
     ref: "Hotel",
     required: true,
     index: true,
-  },
+  immutable: true},
 
   reservationId: {
     type: mongoose.Schema.Types.ObjectId,

@@ -33,10 +33,10 @@ const blockRoom = async (req, res) => {
       isActive: true 
     });
 
-    await Room.findByIdAndUpdate(roomId, { status: "blocked" });
+    await Room.findOneAndUpdate({ _id: roomId, hotelId: req.user.hotelId }, { status: "blocked" });
 
     // Populate room details before sending response
-    const populatedBlock = await BlockRoom.findById(block._id)
+    const populatedBlock = await BlockRoom.findOne({ _id: block._id, hotelId: req.user.hotelId })
       .populate("room", "roomNumber floor");
 
     res.status(201).json({ success: true, data: populatedBlock });
@@ -77,7 +77,7 @@ const unblockRoom = async (req, res) => {
     block.isActive = false;
     await block.save();
 
-    await Room.findByIdAndUpdate(block.room, { status: "available" });
+    await Room.findOneAndUpdate({ _id: block.room, hotelId: req.user.hotelId }, { status: "available" });
 
     res.json({ success: true, message: "Room unblocked" });
 

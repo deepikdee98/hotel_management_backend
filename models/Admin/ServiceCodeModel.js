@@ -6,7 +6,7 @@ const serviceCodeSchema = mongoose.Schema(
     type: mongoose.Schema.Types.ObjectId,
     ref: "Hotel",
     required: true
-  },
+  , immutable: true, index: true},
 
   code: {
     type: String,

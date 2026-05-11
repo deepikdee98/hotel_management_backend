@@ -1,13 +1,15 @@
 const mongoose = require("mongoose");
 
-const paymentSchema = new mongoose.Schema(
-  {
+const paymentSchema = new mongoose.Schema({
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     hotelId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     folioId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Folio",

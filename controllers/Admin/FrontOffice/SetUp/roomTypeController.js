@@ -102,7 +102,7 @@ const updateRoomType = async (req, res) => {
       });
     }
 
-    const existingRoomType = await RoomType.findById(req.params.id);
+    const existingRoomType = await RoomType.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
     if (!existingRoomType) {
       return res.status(404).json({
         message: "Room type not found"
@@ -131,8 +131,7 @@ const updateRoomType = async (req, res) => {
       updateData.baseRate = calculatedBaseRate;
     }
 
-    const updated = await RoomType.findByIdAndUpdate(
-      req.params.id,
+    const updated = await RoomType.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updateData,
       { new: true }
     );
@@ -157,7 +156,7 @@ const deleteRoomType = async (req, res) => {
 
   try {
 
-    const roomType = await RoomType.findByIdAndDelete(req.params.id);
+    const roomType = await RoomType.findOneAndDelete({ _id: req.params.id, hotelId: req.user.hotelId });
 
     if (!roomType) {
       return res.status(404).json({
@@ -195,8 +194,7 @@ const updateRoomTypeStatus = async (req, res) => {
       });
     }
 
-    const roomType = await RoomType.findByIdAndUpdate(
-      req.params.id,
+    const roomType = await RoomType.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
       { new: true }
     );

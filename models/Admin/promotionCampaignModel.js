@@ -7,7 +7,7 @@ const promotionCampaignSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     title: {
       type: String,
       required: true,

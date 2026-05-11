@@ -7,7 +7,7 @@ const offerLogSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     targetType: {
       type: String,
       enum: ["Specific", "InHouse", "PastGuests", "Upcoming"],

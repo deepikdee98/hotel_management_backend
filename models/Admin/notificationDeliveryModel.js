@@ -7,7 +7,7 @@ const notificationDeliverySchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     sourceType: {
       type: String,
       enum: ["admin-notification", "promotion-campaign", "transactional"],

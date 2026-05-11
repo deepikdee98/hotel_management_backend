@@ -277,7 +277,7 @@ const createCheckIn = async (req, res) => {
 
     if (activeRoomCheckin && checkinData.guestType !== "PAX") {
       if (room.status !== "occupied") {
-        await Room.findByIdAndUpdate(room._id, { status: "occupied" });
+        await Room.findOneAndUpdate({ _id: room._id, hotelId: req.user.hotelId }, { status: "occupied" });
       }
       throw new Error(`Room ${room.roomNumber} is already checked in under booking ${activeRoomCheckin.bookingNumber || activeRoomCheckin.bookingNo || ""}`.trim());
     }
@@ -377,12 +377,12 @@ const createCheckIn = async (req, res) => {
     }
 
     if (room.status !== "occupied") {
-      await Room.findByIdAndUpdate(room._id, {
+      await Room.findOneAndUpdate({ _id: room._id, hotelId: req.user.hotelId }, {
         status: "occupied"
       });
     }
 
-    const result = await Checkin.findById(checkin._id)
+    const result = await Checkin.findOne({ _id: checkin._id, hotelId: req.user.hotelId })
       .populate({ path: "roomNumber", select: "roomNumber" })
       .populate({ path: "roomType", select: "code" })
       .populate({ path: "planType", select: "code" });
@@ -531,7 +531,7 @@ const getGRCardByRoom = async (req, res) => {
     const roomTypeName = roomTypeObj?.name || roomTypeObj?.code || "";
 
     // Fetch hotel details for dynamic GR card
-    const hotel = await Hotel.findById(req.user.hotelId);
+    const hotel = await Hotel.findOne({ _id: req.user.hotelId, hotelId: req.user.hotelId });
 
     res.status(200).json({
       success: true,
@@ -650,7 +650,7 @@ const updateCheckIn = async (req, res) => {
           }
     }
 
-    const updated = await Checkin.findByIdAndUpdate(id, updateData, { new: true })
+    const updated = await Checkin.findOneAndUpdate({ _id: id, hotelId: req.user.hotelId }, updateData, { new: true })
       .populate({ path: "roomNumber", select: "roomNumber" })
       .populate({ path: "roomType", select: "code" })
       .populate({ path: "planType", select: "code" });
@@ -690,7 +690,7 @@ const removeLinkedRoomCheckIn = async (req, res) => {
 
     await Folio.deleteMany({ hotelId: req.user.hotelId, checkinId: checkin._id });
     if (checkin.roomNumber) {
-      await Room.findByIdAndUpdate(checkin.roomNumber, { status: "available" });
+      await Room.findOneAndUpdate({ _id: checkin.roomNumber, hotelId: req.user.hotelId }, { status: "available" });
     }
     await Checkin.deleteOne({ _id: checkin._id, hotelId: req.user.hotelId });
 

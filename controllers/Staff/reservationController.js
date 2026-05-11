@@ -217,7 +217,7 @@ exports.updateReservationStatus = async (req, res) => {
         });
       }
 
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "occupied",
       });
 
@@ -232,7 +232,7 @@ exports.updateReservationStatus = async (req, res) => {
         });
       }
 
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "available",
       });
 
@@ -246,7 +246,7 @@ exports.updateReservationStatus = async (req, res) => {
           message: "Cannot cancel after check-in",
         });
       }
-      await Room.findByIdAndUpdate(reservation.room, {
+      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "available",
       });
     }

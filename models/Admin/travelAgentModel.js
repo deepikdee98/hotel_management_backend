@@ -7,7 +7,7 @@ const travelAgentSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     name: {
       type: String,
       required: true,

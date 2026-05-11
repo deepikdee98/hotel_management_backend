@@ -41,7 +41,7 @@ const createRoomAdvance = async (req, res) => {
       });
     }
 
-    const room = await Room.findById(roomNumber);
+    const room = await Room.findOne({ _id: roomNumber, hotelId: req.user.hotelId });
 
     if (!room) {
       return res.status(404).json({
@@ -50,7 +50,7 @@ const createRoomAdvance = async (req, res) => {
       });
     }
 
-    const checkin = await Checkin.findById(guestId);
+    const checkin = await Checkin.findOne({ _id: guestId, hotelId: req.user.hotelId });
 
     if (!checkin) {
       return res.status(404).json({

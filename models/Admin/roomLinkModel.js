@@ -7,7 +7,7 @@ const roomLinkSchema = new mongoose.Schema(
       ref: "Hotel",
       required: true,
       index: true,
-    },
+    immutable: true},
     masterFolioId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Folio",
