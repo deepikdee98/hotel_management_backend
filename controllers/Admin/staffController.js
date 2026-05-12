@@ -7,35 +7,74 @@ try {
   bcrypt = require("bcryptjs");
 }
 
+const usernameRegex = /^[a-zA-Z0-9_]+$/;
+
+const validateUsername = (username) => {
+  if (!username) {
+    return "Username is required";
+  }
+
+  if (username.length < 4) {
+    return "Username must be at least 4 characters";
+  }
+
+  if (!usernameRegex.test(username)) {
+    return "Username can only contain letters, numbers, and underscores";
+  }
+
+  return null;
+};
 
 // @desc    Create Staff
 // @route   POST /admin/staff
 // @access  Private (Hotel Admin)
 const createStaff = async (req, res) => {
   try {
-    const { username, email, password, modules, phone } = req.body;
+    const { name, username, email, password, modules, phone, role } = req.body;
+    const cleanUsername = String(username || "").trim();
+    const cleanEmail = String(email || "").trim().toLowerCase();
 
-    if (!username || !email || !password) {
+    if (!cleanUsername || !cleanEmail || !password) {
       return res.status(400).json({
         message: "Username, email and password are required",
       });
     }
 
-    const existing = await User.findOne({ email });
+    const usernameError = validateUsername(cleanUsername);
+    if (usernameError) {
+      return res.status(400).json({
+        message: usernameError,
+      });
+    }
 
-    if (existing) {
+    const existingEmail = await User.findOne({ email: cleanEmail });
+
+    if (existingEmail) {
       return res.status(400).json({
         message: "User already exists",
       });
     }
 
+    const existingUsername = await User.findOne({
+      hotelId: req.user.hotelId,
+      username: cleanUsername,
+    });
+
+    if (existingUsername) {
+      return res.status(400).json({
+        message: "Username already exists",
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10);
+    const userRole = role === "hoteladmin" ? "hoteladmin" : "staff";
 
     const staff = await User.create({
-      username,
-      email,
+      username: cleanUsername,
+      name: String(name || "").trim(),
+      email: cleanEmail,
       password: hashedPassword,
-      role: "staff",
+      role: userRole,
       phone,
       modules,
       hotelId: req.user.hotelId,
@@ -47,6 +86,12 @@ const createStaff = async (req, res) => {
     });
 
   } catch (error) {
+    if (error.code === 11000 && error.keyPattern?.username) {
+      return res.status(400).json({
+        message: "Username already exists",
+      });
+    }
+
     res.status(500).json({
       message: "Failed to create staff",
       error: error.message

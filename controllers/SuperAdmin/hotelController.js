@@ -11,6 +11,23 @@ try {
   bcrypt = require("bcryptjs");
 }
 
+const usernameRegex = /^[a-zA-Z0-9_]+$/;
+
+const validateUsername = (username) => {
+  if (!username) {
+    return "Admin username is required";
+  }
+
+  if (username.length < 4) {
+    return "Username must be at least 4 characters";
+  }
+
+  if (!usernameRegex.test(username)) {
+    return "Username can only contain letters, numbers, and underscores";
+  }
+
+  return null;
+};
 
 // @desc    Create new hotel
 // @route   POST /super-admin/CreateHotel
@@ -26,15 +43,24 @@ const createHotel = asyncHandler(async (req, res) => {
     country,
     totalRooms,
     modules,
+    adminUsername,
     adminPassword,
     confirmPassword,
     avatar
   } = req.body;
+  const cleanAdminUsername = String(adminUsername || "").trim();
+  const cleanEmail = String(email || "").trim().toLowerCase();
 
   // Validate required fields
-  if (!name || !email || !phone || !address || !city || !country || !adminPassword || !confirmPassword) {
+  if (!name || !cleanAdminUsername || !cleanEmail || !phone || !address || !city || !country || !adminPassword || !confirmPassword) {
     res.status(constants.VALIDATION_ERROR);
     throw new Error("All required fields must be filled");
+  }
+
+  const usernameError = validateUsername(cleanAdminUsername);
+  if (usernameError) {
+    res.status(constants.VALIDATION_ERROR);
+    throw new Error(usernameError);
   }
 
   // Check password match
@@ -44,10 +70,16 @@ const createHotel = asyncHandler(async (req, res) => {
   }
 
   // Check if hotel already exists
-  const existingHotel = await Hotel.findOne({ email });
+  const existingHotel = await Hotel.findOne({ email: cleanEmail });
   if (existingHotel) {
     res.status(constants.VALIDATION_ERROR);
     throw new Error("Hotel already exists");
+  }
+
+  const existingUserEmail = await User.findOne({ email: cleanEmail });
+  if (existingUserEmail) {
+    res.status(constants.VALIDATION_ERROR);
+    throw new Error("User already exists");
   }
 
   // Hash admin password
@@ -60,7 +92,7 @@ const createHotel = asyncHandler(async (req, res) => {
   //  Create Hotel
   const hotel = await Hotel.create({
     name,
-    email,
+    email: cleanEmail,
     phone,
     address,
     city,
@@ -74,8 +106,9 @@ const createHotel = asyncHandler(async (req, res) => {
 
   //  Create Hotel Admin User
   const hotelAdmin = await User.create({
-    username: `${name} Admin`,
-    email,
+    username: cleanAdminUsername,
+    name: `${name} Admin`,
+    email: cleanEmail,
     password: hashedPassword,
     role: "hoteladmin",
     hotelId: hotel._id,

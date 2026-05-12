@@ -1,37 +1,148 @@
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 
-// General API Rate Limiter
+const isProduction = process.env.NODE_ENV === "production";
+
+/**
+ * General API Rate Limiter
+ */
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // Limit each IP to 500 requests per `window` (here, per 15 minutes)
+  max: isProduction ? 300 : 1000,
+
   standardHeaders: true,
   legacyHeaders: false,
-  message: "Too many requests from this IP, please try again after 15 minutes",
+
+  message: {
+    success: false,
+    message: "Too many requests from this IP, please try again later.",
+  },
 });
 
-// Stricter Rate Limiter for Auth Routes
+/**
+ * Auth Rate Limiter (Login/Register)
+ */
 const authLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20, // Limit each IP to 20 login requests per hour
+  max: 20,
+
   standardHeaders: true,
   legacyHeaders: false,
-  message: "Too many login attempts from this IP, please try again after an hour",
+
+  message: {
+    success: false,
+    message:
+      "Too many authentication attempts. Please try again after 1 hour.",
+  },
 });
 
-// Helmet Configuration
+/**
+ * Helmet Security Headers
+ */
 const securityHeaders = helmet({
   contentSecurityPolicy: {
     directives: {
+      /**
+       * Allow resources only from same origin
+       */
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
+
+      /**
+       * JavaScript Sources
+       * In development allow inline scripts for easier debugging
+       */
+      scriptSrc: isProduction
+        ? ["'self'"]
+        : ["'self'", "'unsafe-inline'"],
+
+      /**
+       * CSS Sources
+       */
+      styleSrc: isProduction
+        ? ["'self'"]
+        : ["'self'", "'unsafe-inline'"],
+
+      /**
+       * Image Sources
+       */
       imgSrc: ["'self'", "data:", "https:"],
-      connectSrc: ["'self'", "*"], // allow connections based on CORS
+
+      /**
+       * API / Fetch / WebSocket Connections
+       */
+      connectSrc: [
+        "'self'",
+        process.env.FRONTEND_URL || "http://localhost:3000",
+      ],
+
+      /**
+       * Fonts
+       */
+      fontSrc: [
+        "'self'",
+        "https://fonts.gstatic.com",
+      ],
+
+      /**
+       * Disable Flash / Plugins
+       */
+      objectSrc: ["'none'"],
+
+      /**
+       * Prevent clickjacking
+       */
+      frameAncestors: ["'none'"],
+
+      /**
+       * Upgrade HTTP requests to HTTPS in production
+       */
+      upgradeInsecureRequests: isProduction ? [] : null,
     },
   },
+
+  /**
+   * Hide X-Powered-By header
+   */
+  hidePoweredBy: true,
+
+  /**
+   * Prevent MIME type sniffing
+   */
+  noSniff: true,
+
+  /**
+   * Prevent clickjacking
+   */
+  frameguard: {
+    action: "deny",
+  },
+
+  /**
+   * Referrer Policy
+   */
+  referrerPolicy: {
+    policy: "strict-origin-when-cross-origin",
+  },
+
+  /**
+   * Cross Origin Policies
+   */
   crossOriginEmbedderPolicy: false,
-  crossOriginResourcePolicy: { policy: "cross-origin" },
+
+  crossOriginResourcePolicy: {
+    policy: "cross-origin",
+  },
+
+  /**
+   * HSTS - Force HTTPS in production
+   */
+  hsts: isProduction
+    ? {
+        maxAge: 31536000, // 1 year
+        includeSubDomains: true,
+        preload: true,
+      }
+    : false,
 });
 
 module.exports = {

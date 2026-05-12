@@ -591,7 +591,7 @@ router.get("/rooms", asyncHandler(async (req, res) => {
         checkinId: activeCheckin._id,
       };
     })
-    .filter((room) => req.query.status !== "available" || room.status === "available");
+    .filter((room) => !req.query.status || room.status === req.query.status);
 
   res.json({ success: true, data: { rooms: normalizedRooms } });
 }));

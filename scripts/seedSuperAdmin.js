@@ -20,7 +20,9 @@ module.exports = async function seedSuperAdmin() {
     existing.isActive = true;
     existing.hotelId = null;
     existing.tokenVersion = 0;
-    existing.username = existing.username || "Super Admin";
+    existing.username = existing.username && /^[a-zA-Z0-9_]+$/.test(existing.username)
+      ? existing.username
+      : "superadmin";
     existing.phone = existing.phone || "+1 (555) 123-4567";
     existing.timezone = existing.timezone || "UTC-5 (Eastern Time)";
     existing.avatar = existing.avatar || "";
@@ -35,7 +37,7 @@ module.exports = async function seedSuperAdmin() {
   }
 
   await User.create({
-    username: "Super Admin",
+    username: "superadmin",
     email,
     password,
     role: "superadmin",

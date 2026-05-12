@@ -67,20 +67,26 @@ const buildRefreshToken = (user) => {
 };
 
 const loginUser = asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
+  const { identifier, email, password } = req.body;
+  const loginIdentifier = String(identifier || email || "").trim();
   let hotel = null;
   let subscription = null;
   
-  if (!email || !password) {
+  if (!loginIdentifier || !password) {
     res.status(400);
-    throw new Error("Email and password are mandatory");
+    throw new Error("Username/email and password are mandatory");
   }
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({
+    $or: [
+      { email: loginIdentifier },
+      { username: loginIdentifier },
+    ],
+  });
 
   if (!user) {
     res.status(401);
-    throw new Error("Invalid email or password.");
+    throw new Error("Invalid username/email or password");
   }
 
   if (!user.isActive) {
@@ -103,7 +109,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   if (!isPasswordMatch) {
     res.status(401);
-    throw new Error("Invalid email or password.");
+    throw new Error("Invalid username/email or password");
   }
 
   const modules = await getEffectiveModules(user);
@@ -132,14 +138,21 @@ const loginUser = asyncHandler(async (req, res) => {
 // @access  Public
 const loginSuperAdmin = asyncHandler(async (req, res) => {
   console.log("Super admin login attempt");
-  const { email, password } = req.body;
+  const { identifier, email, password } = req.body;
+  const loginIdentifier = String(identifier || email || "").trim();
 
-  if (!email || !password) {
+  if (!loginIdentifier || !password) {
     res.status(400);
-    throw new Error("Email and password are mandatory");
+    throw new Error("Username/email and password are mandatory");
   }
 
-  const user = await User.findOne({ email, role: "superadmin" });
+  const user = await User.findOne({
+    role: "superadmin",
+    $or: [
+      { email: loginIdentifier },
+      { username: loginIdentifier },
+    ],
+  });
 
   if (!user) {
     res.status(401);

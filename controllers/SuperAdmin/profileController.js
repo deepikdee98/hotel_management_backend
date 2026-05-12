@@ -2,6 +2,21 @@ const asyncHandler = require("express-async-handler");
 const User = require("../../models/userModel");
 const { constants } = require("../../constants");
 
+const usernameRegex = /^[a-zA-Z0-9_]+$/;
+
+const validateUsername = (username) => {
+  if (!username) return null;
+
+  if (username.length < 4) {
+    return "Username must be at least 4 characters";
+  }
+
+  if (!usernameRegex.test(username)) {
+    return "Username can only contain letters, numbers, and underscores";
+  }
+
+  return null;
+};
 
 // @desc    Get Profile
 // @route   GET /super-admin/profile
@@ -26,6 +41,7 @@ const getProfile = asyncHandler(async (req, res) => {
 const updateProfile = asyncHandler(async (req, res) => {
 
   const { username, email, phone, timezone, avatar } = req.body;
+  const cleanUsername = username ? String(username).trim() : "";
 
   const user = await User.findById(req.user._id);
 
@@ -33,7 +49,26 @@ const updateProfile = asyncHandler(async (req, res) => {
     res.status(constants.NOT_FOUND);
     throw new Error("User not found");
   }
-  if (username) user.username = username;
+  const usernameError = validateUsername(cleanUsername);
+  if (usernameError) {
+    res.status(constants.VALIDATION_ERROR);
+    throw new Error(usernameError);
+  }
+
+  if (cleanUsername && cleanUsername !== user.username) {
+    const existingUsername = await User.findOne({
+      _id: { $ne: user._id },
+      hotelId: user.hotelId || null,
+      username: cleanUsername,
+    });
+
+    if (existingUsername) {
+      res.status(constants.VALIDATION_ERROR);
+      throw new Error("Username already exists");
+    }
+
+    user.username = cleanUsername;
+  }
   if (email) user.email = email;
   if (phone) user.phone = phone;
   if (timezone) user.timezone = timezone;

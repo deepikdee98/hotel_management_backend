@@ -5,14 +5,13 @@ const { protect } = require("../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../middleware/roleMiddleware");
 
 router.use(protect);
-router.use(authorizeRoles("hoteladmin"));
 
 router.route('/')
-  .get(getServices)
-  .post(createService);
+  .get(authorizeRoles("hoteladmin", "staff"), getServices)
+  .post(authorizeRoles("hoteladmin"), createService);
 
 router.route('/:id')
-  .put(updateService)
-  .delete(deleteService);
+  .put(authorizeRoles("hoteladmin"), updateService)
+  .delete(authorizeRoles("hoteladmin"), deleteService);
 
 module.exports = router;

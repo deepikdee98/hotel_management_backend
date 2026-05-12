@@ -5,6 +5,13 @@ const userSchema = mongoose.Schema(
     username: {
       type: String,
       required: true,
+      trim: true,
+      minlength: 4,
+      match: [/^[a-zA-Z0-9_]+$/, "Username can only contain letters, numbers, and underscores"],
+    },
+    name: {
+      type: String,
+      trim: true,
     },
     email: {
       type: String,
@@ -87,5 +94,7 @@ const userSchema = mongoose.Schema(
   },
   { timestamps: true }
 );
+
+userSchema.index({ hotelId: 1, username: 1 }, { unique: true });
 
 module.exports = mongoose.model("User", userSchema);
