@@ -10,7 +10,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "setup": "node scripts/index.js"
+    "setup": "node scripts/index.js",
+    "seed:superadmin": "node scripts/seedSuperAdmin.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",

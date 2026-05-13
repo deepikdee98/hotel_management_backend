@@ -531,7 +531,7 @@ const getGRCardByRoom = async (req, res) => {
     const roomTypeName = roomTypeObj?.name || roomTypeObj?.code || "";
 
     // Fetch hotel details for dynamic GR card
-    const hotel = await Hotel.findOne({ _id: req.user.hotelId, hotelId: req.user.hotelId });
+    const hotel = await Hotel.findById(req.user.hotelId);
 
     res.status(200).json({
       success: true,

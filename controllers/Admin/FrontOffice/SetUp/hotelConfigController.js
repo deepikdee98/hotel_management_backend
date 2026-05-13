@@ -48,7 +48,7 @@ const getHotelConfig = async (req, res) => {
   try {
 
     const [hotel, systemConfig] = await Promise.all([
-      Hotel.findOne({ _id: req.user.hotelId, hotelId: req.user.hotelId }),
+      Hotel.findById(req.user.hotelId),
       getOrCreateSystemConfig(req.user.hotelId),
     ]);
 
@@ -119,7 +119,7 @@ const updateHotelConfig = async (req, res) => {
     }
 
     const [hotel, systemConfig] = await Promise.all([
-      Hotel.findOne({ _id: req.user.hotelId, hotelId: req.user.hotelId }),
+      Hotel.findById(req.user.hotelId),
       getOrCreateSystemConfig(req.user.hotelId),
     ]);
 

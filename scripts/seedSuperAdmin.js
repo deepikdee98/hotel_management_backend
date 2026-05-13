@@ -1,4 +1,6 @@
 const User = require("../models/userModel");
+const connectDb = require("../config/dbConnection");
+const dotenv = require("dotenv");
 
 let bcrypt;
 try {
@@ -6,6 +8,8 @@ try {
 } catch (error) {
   bcrypt = require("bcryptjs");
 }
+
+dotenv.config();
 
 module.exports = async function seedSuperAdmin() {
   const email = process.env.SUPER_ADMIN_EMAIL || "superadmin@hotel.com";
@@ -57,3 +61,19 @@ module.exports = async function seedSuperAdmin() {
     message: `Created super admin user ${email}`,
   };
 };
+
+if (require.main === module) {
+  (async () => {
+    try {
+      await connectDb();
+      const result = await module.exports();
+      console.log(result.message);
+      console.log("Super admin password:", process.env.SUPER_ADMIN_PASSWORD || "admin@123");
+      process.exit(0);
+    } catch (error) {
+      console.error("Error seeding super admin:", error);
+      process.exit(1);
+    }
+  })();
+}
+

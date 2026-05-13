@@ -44,11 +44,30 @@ const protect = asyncHandler(async (req, res, next) => {
 
             next()
         } catch (error) {
-            if (res.statusCode === 200) {
-                res.status(constants.UNAUTHORIZED)
-            }
-            throw error
-        }
+
+    if (error.name === "TokenExpiredError") {
+        return res.status(401).json({
+            success: false,
+            message: "Your session has expired. Please login again."
+        });
+    }
+
+    if (error.name === "JsonWebTokenError") {
+        return res.status(401).json({
+            success: false,
+            message: "Invalid token."
+        });
+    }
+
+    if (res.statusCode === 200) {
+        res.status(constants.UNAUTHORIZED)
+    }
+
+    return res.json({
+        success: false,
+        message: error.message
+    });
+}
     } else {
         res.status(constants.UNAUTHORIZED)
         throw new Error("User is not authorized")

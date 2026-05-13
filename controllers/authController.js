@@ -49,8 +49,7 @@ const buildAccessToken = (user, modules) => {
       },
     },
     process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "1h" }
-  );
+{ expiresIn: "1d" }  );
 };
 
 const buildRefreshToken = (user) => {
@@ -62,8 +61,7 @@ const buildRefreshToken = (user) => {
       },
     },
     process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "7d" }
-  );
+{ expiresIn: "30d" }  );
 };
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -121,6 +119,7 @@ const loginUser = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     role: user.role,
+    username: user.username,
     modules,
     subscription,
     hotel: hotel
@@ -180,6 +179,7 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
     accessToken,
     refreshToken,
     role: user.role,
+    username: user.username,
   });
 });
 
