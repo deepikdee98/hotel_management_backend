@@ -46,7 +46,9 @@ const getRoomLookup = async (req, res) => {
           checkIn: reservation?.checkInDate || null,
           checkOut: reservation?.checkOutDate || null,
 
-          rate: room.roomType?.baseRate || 0
+          rate: room.roomType?.baseRate || 0,
+          gstPercentage: room.roomType?.gstPercentage || 0,
+          gstType: room.roomType?.gstType || "EXCLUSIVE"
         };
       })
     );

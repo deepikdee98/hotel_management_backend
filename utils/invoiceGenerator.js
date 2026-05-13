@@ -25,7 +25,7 @@ async function generateCheckoutInvoicePdf(payload) {
   const stream = fs.createWriteStream(absolutePath);
   doc.pipe(stream);
 
-  doc.fontSize(20).text("Tax Invoice", { align: "center" });
+  doc.fontSize(20).text(payload.title || "Tax Invoice", { align: "center" });
   doc.moveDown(0.3);
   doc.fontSize(10).text(`Invoice No: ${payload.invoiceNumber}`, { align: "right" });
   doc.text(`Date: ${new Date(payload.invoiceDate).toLocaleString()}`, { align: "right" });
@@ -39,8 +39,15 @@ async function generateCheckoutInvoicePdf(payload) {
   doc.fontSize(12).text("Guest Details");
   doc.fontSize(10);
   drawRow(doc, "Guest Name", payload.guestName || "N/A");
+  if (payload.billToName && payload.billToName !== payload.guestName) {
+    drawRow(doc, "Bill To", payload.billToName);
+  }
   drawRow(doc, "Room No", payload.roomNumber || "N/A");
   drawRow(doc, "Stay Duration", payload.stayDuration || "N/A");
+  const includedCompanions = Array.isArray(payload.includedCompanions) ? payload.includedCompanions : [];
+  if (includedCompanions.length) {
+    drawRow(doc, "Included Companions", includedCompanions.map((item) => item.name).filter(Boolean).join(", "));
+  }
   doc.moveDown(0.5);
 
   doc.fontSize(12).text("Billing");
@@ -54,6 +61,10 @@ async function generateCheckoutInvoicePdf(payload) {
 
   doc.fontSize(11).text("Payment Details");
   doc.fontSize(10).text(payload.paymentSummary || "Payment details unavailable");
+  if (payload.notes) {
+    doc.moveDown();
+    doc.fontSize(10).text(payload.notes);
+  }
   doc.moveDown(2);
   doc.fontSize(10).text("Thank you for staying with us.", { align: "center" });
 

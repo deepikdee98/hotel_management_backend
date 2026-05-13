@@ -127,8 +127,10 @@ const loginUser = asyncHandler(async (req, res) => {
           id: hotel._id,
           name: hotel.name,
           expiryDate: hotel.expiryDate,
+          isSetupCompleted: hotel.isSetupCompleted,
         }
       : null,
+    needsSetup: user.role === "hoteladmin" && hotel && !hotel.isSetupCompleted ? true : false,
   });
 });
 

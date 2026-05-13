@@ -64,6 +64,35 @@ function buildInvoiceItems(roomCharges, serviceCharges, cgst, sgst) {
   ];
 }
 
+function normalizeCompanions(companions = []) {
+  if (!Array.isArray(companions)) return [];
+  return companions
+    .filter((companion) => companion && typeof companion === "object")
+    .map((companion) => ({
+      name: String(companion.name || "").trim(),
+      mobile: String(companion.mobile || "").trim(),
+      gender: String(companion.gender || "").trim(),
+      type: String(companion.type || "").trim(),
+      idType: String(companion.idType || "").trim(),
+      idNumber: String(companion.idNumber || "").trim(),
+      separateBill: companion.separateBill === true,
+    }))
+    .filter((companion) => companion.name || companion.mobile || companion.idNumber);
+}
+
+function buildCompanionInvoiceItems(amount = 0) {
+  const normalizedAmount = Number(Math.max(0, toNum(amount)).toFixed(2));
+  return [
+    {
+      description: "Companion Billing Folio",
+      quantity: 1,
+      rate: normalizedAmount,
+      amount: normalizedAmount,
+      total: normalizedAmount,
+    },
+  ];
+}
+
 exports.completeCheckout = async (req, res) => {
   let session = null;
 
@@ -170,6 +199,9 @@ exports.completeCheckout = async (req, res) => {
     );
     const discount = Math.max(0, toNum(adjustments.discount));
     const adjustedTotalAmount = Number(Math.max(0, roundedTotalAmount + extraCharges - discount).toFixed(2));
+    const normalizedCompanions = normalizeCompanions(checkin.companions);
+    const mainBillCompanions = normalizedCompanions.filter((companion) => !companion.separateBill);
+    const separateBillCompanions = normalizedCompanions.filter((companion) => companion.separateBill);
 
     const advanceDocs = await RoomAdvance.find({
       hotelId,
@@ -277,8 +309,10 @@ exports.completeCheckout = async (req, res) => {
     }
 
     const normalizedCheckoutTime = actualCheckOutTime ? new Date(actualCheckOutTime) : new Date();
-    const invoiceNumber = `INV-${Date.now()}`;
+    const invoiceTimestamp = Date.now();
+    const invoiceNumber = `INV-${invoiceTimestamp}`;
     let createdInvoice = null;
+    const createdCompanionInvoices = [];
 
     const writeCheckoutRecords = async (activeSession = null) => {
       const writeOptions = activeSession ? { session: activeSession } : {};
@@ -331,6 +365,16 @@ exports.completeCheckout = async (req, res) => {
           rating: toNum(guestFeedback.rating),
           comment: guestFeedback.comment || "",
         },
+        companionBilling: {
+          mainGuestBill: {
+            guestName: checkin.guestName || "N/A",
+            companions: mainBillCompanions,
+          },
+          separateBills: separateBillCompanions.map((companion, index) => ({
+            ...companion,
+            invoiceNumber: `INV-${invoiceTimestamp}-C${index + 1}`,
+          })),
+        },
         billingType: normalizedBillingType,
         splitBilling: normalizedBillingType === "split" ? splitRows : [],
         companyBilling: normalizedBillingType === "company" ? companyLedgerPayload : null,
@@ -374,6 +418,8 @@ exports.completeCheckout = async (req, res) => {
           hotelAddress: req.user.hotelAddress || "",
           hotelGstin: req.user.gstin || "",
           guestName: checkin.guestName || "N/A",
+          billToName: checkin.guestName || "N/A",
+          includedCompanions: mainBillCompanions,
           roomNumber: groupCheckins.map((item) => item.roomNumber?.roomNumber || item.roomNumber || "").filter(Boolean).join(", ") || String(checkin.roomNumber || folio.roomId || ""),
           stayDuration: `${toNum(checkin.nights || 1)} night(s)`,
           roomCharges,
@@ -409,12 +455,80 @@ exports.completeCheckout = async (req, res) => {
               notes: invoice.email ? "Email invoice requested" : "",
               sentMeta: {
                 emailRequested: !!invoice.email,
+                companionBilling: {
+                  billRole: "main_guest",
+                  includedCompanions: mainBillCompanions,
+                  separateCompanionCount: separateBillCompanions.length,
+                },
               },
             },
           ],
           writeOptions
         );
         createdInvoice = invoiceDoc;
+
+        for (let index = 0; index < separateBillCompanions.length; index += 1) {
+          const companion = separateBillCompanions[index];
+          const companionInvoiceNumber = `INV-${invoiceTimestamp}-C${index + 1}`;
+          const companionItems = buildCompanionInvoiceItems(0);
+          const companionPdfInfo = await generateCheckoutInvoicePdf({
+            title: "Separate Companion Bill",
+            invoiceNumber: companionInvoiceNumber,
+            invoiceDate: normalizedCheckoutTime,
+            hotelName: req.user.hotelName || "Hotel",
+            hotelAddress: req.user.hotelAddress || "",
+            hotelGstin: req.user.gstin || "",
+            guestName: checkin.guestName || "N/A",
+            billToName: companion.name || "Companion",
+            roomNumber: groupCheckins.map((item) => item.roomNumber?.roomNumber || item.roomNumber || "").filter(Boolean).join(", ") || String(checkin.roomNumber || folio.roomId || ""),
+            stayDuration: `${toNum(checkin.nights || 1)} night(s)`,
+            roomCharges: 0,
+            serviceCharges: 0,
+            cgst: 0,
+            sgst: 0,
+            totalAmount: 0,
+            paymentSummary: "Separate companion folio created. Companion-specific charges can be settled independently.",
+            notes: `Main Guest: ${checkin.guestName || "N/A"}`,
+          });
+
+          const [companionInvoiceDoc] = await Invoice.create(
+            [
+              {
+                hotelId,
+                invoiceNumber: companionInvoiceNumber,
+                folioId: folio._id,
+                invoiceType: "Checkout Companion",
+                customerId: String(checkin._id),
+                guestName: companion.name || "Companion",
+                customerName: companion.name || "Companion",
+                bookingId: checkin.bookingGroupId || checkin.bookingNumber || checkin.bookingNo || "",
+                invoiceDate: normalizedCheckoutTime,
+                dueDate: normalizedCheckoutTime,
+                items: companionItems,
+                subtotal: 0,
+                totalTax: 0,
+                cgst: 0,
+                sgst: 0,
+                grandTotal: 0,
+                amountPaid: 0,
+                balanceDue: 0,
+                pdfPath: companionPdfInfo.relativePath,
+                status: "paid",
+                notes: `Separate bill for companion. Main Guest: ${checkin.guestName || "N/A"}`,
+                sentMeta: {
+                  emailRequested: !!invoice.email,
+                  companionBilling: {
+                    billRole: "separate_companion",
+                    companion,
+                    mainGuestName: checkin.guestName || "N/A",
+                  },
+                },
+              },
+            ],
+            writeOptions
+          );
+          createdCompanionInvoices.push(companionInvoiceDoc);
+        }
       }
 
       const roomId = folio.roomId || checkin.roomNumber || null;
@@ -498,6 +612,12 @@ exports.completeCheckout = async (req, res) => {
         billingType: normalizedBillingType,
         invoiceId: createdInvoice?._id || null,
         invoiceDownloadUrl: createdInvoice?._id ? `/front-office/check-out/invoices/${createdInvoice._id}/download` : null,
+        companionInvoices: createdCompanionInvoices.map((item) => ({
+          invoiceId: item._id,
+          invoiceNumber: item.invoiceNumber,
+          guestName: item.guestName,
+          invoiceDownloadUrl: `/front-office/check-out/invoices/${item._id}/download`,
+        })),
         totals: {
           roomCharges,
           serviceCharges,

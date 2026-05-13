@@ -3,13 +3,16 @@ const router = express.Router();
 
 const {
   getHotelConfig,
-  updateHotelConfig
+  updateHotelConfig,
+  completeHotelSetup
 } = require("../../../../controllers/Admin/FrontOffice/SetUp/hotelConfigController");
 
 const { protect } = require("../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../middleware/roleMiddleware");
 
 router.use(protect);
+
+router.post("/complete-setup", authorizeRoles("hoteladmin"), completeHotelSetup);
 
 router
   .route("/")

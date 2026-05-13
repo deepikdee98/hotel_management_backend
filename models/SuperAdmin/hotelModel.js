@@ -88,6 +88,11 @@ const hotelSchema = mongoose.Schema(
       default: true
     },
 
+    isSetupCompleted: {
+      type: Boolean,
+      default: false
+    },
+
     expiryDate: {
       type: Date,
       required: true

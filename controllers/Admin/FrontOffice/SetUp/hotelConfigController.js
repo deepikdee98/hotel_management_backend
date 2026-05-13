@@ -212,8 +212,37 @@ const updateHotelConfig = async (req, res) => {
   }
 };
 
+// @desc    Complete Hotel Setup
+// @route   POST /admin/setup/hotel-config/complete-setup
+// @access  Private (Hotel Admin)
+const completeHotelSetup = async (req, res) => {
+  try {
+    const hotel = await Hotel.findById(req.user.hotelId);
+
+    if (!hotel) {
+      return res.status(404).json({
+        message: "Hotel not found"
+      });
+    }
+
+    hotel.isSetupCompleted = true;
+    await hotel.save();
+
+    res.json({
+      success: true,
+      message: "Hotel setup completed successfully",
+      isSetupCompleted: true
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: error.message || "Failed to complete hotel setup"
+    });
+  }
+};
+
 
 module.exports = {
   getHotelConfig,
-  updateHotelConfig
+  updateHotelConfig,
+  completeHotelSetup
 };
