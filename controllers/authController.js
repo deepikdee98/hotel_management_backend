@@ -4,6 +4,9 @@ const Hotel = require("../models/SuperAdmin/hotelModel");
 const jwt = require("jsonwebtoken");
 const { checkSubscriptionStatus } = require("../utils/subscriptionHelper");
 const { constants } = require("../constants");
+const { sendOtpEmail } = require("../utils/email");
+const { generateOtp } = require("../utils/otp");
+const { sendOtpSms } = require("../utils/sms");
 
 let bcrypt;
 try {
@@ -49,7 +52,8 @@ const buildAccessToken = (user, modules) => {
       },
     },
     process.env.ACCESS_TOKEN_SECRET,
-{ expiresIn: "1d" }  );
+    { expiresIn: "1d" }
+  );
 };
 
 const buildRefreshToken = (user) => {
@@ -61,7 +65,8 @@ const buildRefreshToken = (user) => {
       },
     },
     process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
-{ expiresIn: "30d" }  );
+    { expiresIn: "30d" }
+  );
 };
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -79,12 +84,13 @@ const loginUser = asyncHandler(async (req, res) => {
     $or: [
       { email: loginIdentifier },
       { username: loginIdentifier },
+      { phone: loginIdentifier },
     ],
   });
 
   if (!user) {
     res.status(401);
-    throw new Error("Invalid username/email or password");
+    throw new Error("Invalid credentials");
   }
 
   if (!user.isActive) {
@@ -107,7 +113,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   if (!isPasswordMatch) {
     res.status(401);
-    throw new Error("Invalid username/email or password");
+    throw new Error("Invalid credentials");
   }
 
   const modules = await getEffectiveModules(user);
@@ -134,11 +140,7 @@ const loginUser = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Super admin login
-// @route   POST /auth/super-admin/login
-// @access  Public
 const loginSuperAdmin = asyncHandler(async (req, res) => {
-  console.log("Super admin login attempt");
   const { identifier, email, password } = req.body;
   const loginIdentifier = String(identifier || email || "").trim();
 
@@ -185,9 +187,6 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Refresh access token
-// @route   POST /auth/refresh
-// @access  Public
 const refreshToken = asyncHandler(async (req, res) => {
   const { refreshToken } = req.body;
 
@@ -208,7 +207,6 @@ const refreshToken = asyncHandler(async (req, res) => {
     throw new Error("Invalid refresh token");
   }
 
-  // Check Hotel Subscription/Status for non-superadmins during refresh
   let subscription = null;
   if (user.role !== 'superadmin' && user.hotelId) {
     const hotel = await Hotel.findById(user.hotelId);
@@ -232,9 +230,6 @@ const refreshToken = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Change password
-// @route   POST /auth/change-password
-// @access  Private
 const changePassword = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword, confirmPassword } = req.body;
 
@@ -262,7 +257,6 @@ const changePassword = asyncHandler(async (req, res) => {
   }
 
   user.password = await bcrypt.hash(newPassword, 10);
-  // Rotate tokenVersion so old sessions stop working.
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
 
@@ -272,14 +266,152 @@ const changePassword = asyncHandler(async (req, res) => {
   });
 });
 
-// @desc    Logout user
-// @route   POST /auth/logout
-// @access  Private
+// @desc    Request password reset OTP
+// @route   POST /auth/forgot-password
+// @access  Public
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email, mobileNumber, identifier } = req.body;
+  const input = String(identifier || email || mobileNumber || "").trim();
+
+  if (!input) {
+    res.status(400);
+    throw new Error("Email, username or mobile number is required");
+  }
+
+  const user = await User.findOne({
+    $or: [
+      { email: input.toLowerCase() },
+      { username: input },
+      { phone: input },
+    ],
+  });
+
+  if (!user || !user.isActive) {
+    // Return success even if user not found for security
+    return res.status(200).json({
+      success: true,
+      message: "If an account exists, an OTP has been sent.",
+    });
+  }
+
+  const otp = generateOtp();
+  console.log("-----------------------------------------");
+  console.log(`NEW OTP GENERATED: ${otp}`);
+  console.log("-----------------------------------------");
+  user.resetOtp = otp;
+  user.resetOtpExpire = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  user.resetOtpVerified = false;
+  await user.save();
+
+  let sent = false;
+  // If the input was specifically a phone number or the user ONLY has a phone number
+  if ((/^\d+$/.test(input) && input.length >= 10) || (!user.email && user.phone)) {
+    const result = await sendOtpSms({ to: user.phone, otp });
+    sent = result.sent;
+  } else {
+    // Default to email if available
+    const result = await sendOtpEmail({ to: user.email, otp });
+    sent = result.sent;
+  }
+
+  if (!sent) {
+    res.status(500);
+    throw new Error("Failed to send OTP. Please try again later.");
+  }
+
+  res.status(200).json({
+    success: true,
+    message: "OTP has been sent to your registered email or mobile number.",
+  });
+});
+
+// @desc    Verify OTP for password reset
+// @route   POST /auth/verify-otp
+// @access  Public
+const verifyOtp = asyncHandler(async (req, res) => {
+  const { email, mobileNumber, identifier, otp } = req.body;
+  const input = String(identifier || email || mobileNumber || "").trim();
+
+  if (!input || !otp) {
+    res.status(400);
+    throw new Error("Identifier and OTP are required");
+  }
+
+  const user = await User.findOne({
+    $or: [
+      { email: input.toLowerCase() },
+      { username: input },
+      { phone: input },
+    ],
+    resetOtp: otp,
+    resetOtpExpire: { $gt: new Date() },
+  });
+
+  if (!user) {
+    res.status(400);
+    throw new Error("Invalid or expired OTP");
+  }
+
+  user.resetOtpVerified = true;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: "OTP verified successfully. You can now reset your password.",
+  });
+});
+
+// @desc    Reset password using OTP verification
+// @route   POST /auth/reset-password
+// @access  Public
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, mobileNumber, identifier, password, confirmPassword } = req.body;
+  const input = String(identifier || email || mobileNumber || "").trim();
+
+  if (!password || !confirmPassword) {
+    res.status(400);
+    throw new Error("Password and confirm password are required");
+  }
+
+  if (password !== confirmPassword) {
+    res.status(400);
+    throw new Error("Passwords do not match");
+  }
+
+  if (String(password).length < 6) {
+    res.status(400);
+    throw new Error("Password must be at least 6 characters");
+  }
+
+  const user = await User.findOne({
+    $or: [
+      { email: input.toLowerCase() },
+      { username: input },
+      { phone: input },
+    ],
+    resetOtpVerified: true,
+  });
+
+  if (!user) {
+    res.status(400);
+    throw new Error("Unauthorized password reset request");
+  }
+
+  user.password = await bcrypt.hash(password, 10);
+  user.resetOtp = null;
+  user.resetOtpExpire = null;
+  user.resetOtpVerified = false;
+  user.tokenVersion = (user.tokenVersion || 0) + 1;
+  await user.save();
+
+  res.status(200).json({
+    success: true,
+    message: "Password reset successfully",
+  });
+});
 
 const logoutUser = asyncHandler(async (req, res) => {
-
   const userId = req.user._id;
-
   const user = await User.findById(userId);
 
   if (!user) {
@@ -287,7 +419,6 @@ const logoutUser = asyncHandler(async (req, res) => {
     throw new Error("User not found");
   }
 
-  // invalidate token
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
 
@@ -295,7 +426,6 @@ const logoutUser = asyncHandler(async (req, res) => {
     success: true,
     message: "Logout successful"
   });
-
 });
 
 module.exports = {
@@ -304,4 +434,7 @@ module.exports = {
   logoutUser,
   refreshToken,
   changePassword,
+  forgotPassword,
+  verifyOtp,
+  resetPassword,
 };

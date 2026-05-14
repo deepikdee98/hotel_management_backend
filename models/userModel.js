@@ -90,7 +90,19 @@ const userSchema = mongoose.Schema(
         type: Number,
         default: 30   
       }
-    }
+    },
+    resetOtp: {
+      type: String,
+      default: null,
+    },
+    resetOtpExpire: {
+      type: Date,
+      default: null,
+    },
+    resetOtpVerified: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );

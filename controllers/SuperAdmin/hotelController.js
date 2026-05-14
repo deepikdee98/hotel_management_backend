@@ -3,6 +3,7 @@ const Hotel = require("../../models/SuperAdmin/hotelModel");
 const User = require("../../models/userModel");
 const { constants } = require("../../constants");
 const { checkSubscriptionStatus } = require("../../utils/subscriptionHelper");
+const { sendHotelAccountEmail } = require("../../utils/email");
 
 let bcrypt;
 try {
@@ -119,10 +120,27 @@ const createHotel = asyncHandler(async (req, res) => {
     avatar: avatar || ""
   });
 
+  let accountEmail = { sent: false };
+  try {
+    accountEmail = await sendHotelAccountEmail({
+      to: cleanEmail,
+      hotelName: name,
+      username: cleanAdminUsername,
+      password: adminPassword,
+    });
+  } catch (error) {
+    accountEmail = {
+      sent: false,
+      reason: error.message || "Failed to send account email",
+    };
+    console.error("Failed to send hotel account email:", error);
+  }
+
   res.status(201).json({
     message: "Hotel and Hotel Admin created successfully",
     hotel,
-    hotelAdmin
+    hotelAdmin,
+    accountEmail,
   });
 
 });
