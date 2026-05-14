@@ -593,7 +593,10 @@ exports.completeCheckout = async (req, res) => {
       await session.withTransaction(() => writeCheckoutRecords(session));
     } catch (transactionError) {
       const message = String(transactionError?.message || "");
-      if (!message.includes("Transaction numbers are only allowed on a replica set member or mongos")) {
+      if (
+        !message.includes("Transaction numbers are only allowed on a replica set member or mongos") &&
+        !message.includes("does not support retryable writes")
+      ) {
         throw transactionError;
       }
       if (session) {
