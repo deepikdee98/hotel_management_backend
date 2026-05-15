@@ -299,7 +299,7 @@ const forgotPassword = asyncHandler(async (req, res) => {
   console.log(`NEW OTP GENERATED: ${otp}`);
   console.log("-----------------------------------------");
   user.resetOtp = otp;
-  user.resetOtpExpire = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+  user.resetOtpExpire = new Date(Date.now() + 1 * 60 * 1000); // 1 minute
   user.resetOtpVerified = false;
   await user.save();
 

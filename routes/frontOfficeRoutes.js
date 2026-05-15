@@ -549,10 +549,6 @@ router.post("/rate-plans", asyncHandler(async (req, res) => {
 router.get("/rooms", asyncHandler(async (req, res) => {
   const filter = { hotelId: req.user.hotelId };
 
-  if (req.query.status) {
-    filter.status = req.query.status;
-  }
-
   if (req.query.floor) {
     filter.floor = Number(req.query.floor);
   }
@@ -574,24 +570,77 @@ router.get("/rooms", asyncHandler(async (req, res) => {
     status: { $ne: "checked-out" },
     guestType: { $ne: "PAX" },
     roomNumber: { $in: rooms.map((room) => room._id) },
-  }).select("roomNumber guestName bookingNumber bookingNo");
+  }).select("roomNumber guestName bookingNumber bookingNo checkInDate nights adultMale adultFemale children mobileNo");
 
   const activeByRoom = new Map(activeCheckins.map((item) => [String(item.roomNumber), item]));
-  const normalizedRooms = rooms
-    .map((room) => {
-      const activeCheckin = activeByRoom.get(String(room._id));
-      if (!activeCheckin) return room;
+  
+  // Fetch active blocks for blocked rooms
+  const blockedRoomIds = rooms.filter(r => r.status === "blocked").map(r => r._id);
+  const activeBlocks = await BlockRoom.find({
+    hotelId: req.user.hotelId,
+    room: { $in: blockedRoomIds },
+    isActive: true
+  }).lean();
+  const blocksByRoom = new Map(activeBlocks.map(b => [String(b.room), b]));
 
+  let normalizedRooms = rooms.map((room) => {
+    const activeCheckin = activeByRoom.get(String(room._id));
+    if (activeCheckin) {
       const objectRoom = room.toObject();
+      
+      const checkInDate = activeCheckin.checkInDate ? new Date(activeCheckin.checkInDate) : new Date();
+      const nights = Number(activeCheckin.nights || 0);
+      const checkOutDate = new Date(checkInDate.getTime() + nights * 24 * 60 * 60 * 1000);
+      const now = new Date();
+      const diffTime = checkOutDate.getTime() - now.getTime();
+      let remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      
+      if (isNaN(remainingDays)) remainingDays = 0;
+
       return {
         ...objectRoom,
         status: "occupied",
         guestName: activeCheckin.guestName,
         bookingNumber: activeCheckin.bookingNumber || activeCheckin.bookingNo,
         checkinId: activeCheckin._id,
+        checkInDate: activeCheckin.checkInDate || checkInDate.toISOString(),
+        checkOutDate: checkOutDate.toISOString(),
+        adults: (activeCheckin.adultMale || 0) + (activeCheckin.adultFemale || 0),
+        children: activeCheckin.children || 0,
+        phone: activeCheckin.mobileNo,
+        remainingDays: remainingDays > 0 ? remainingDays : 0,
       };
-    })
-    .filter((room) => !req.query.status || room.status === req.query.status);
+    }
+
+    const activeBlock = blocksByRoom.get(String(room._id));
+    if (room.status === "blocked" && activeBlock) {
+      const objectRoom = room.toObject();
+      return {
+        ...objectRoom,
+        blockDetails: {
+          from: activeBlock.from,
+          to: activeBlock.to,
+          reason: activeBlock.remark || activeBlock.reason || ""
+        }
+      };
+    }
+
+    return room.toObject();
+  });
+
+  // Apply sorting if status is provided (selected status on top)
+  if (req.query.status && req.query.status !== "all") {
+    normalizedRooms.sort((a, b) => {
+      if (a.status === req.query.status && b.status !== req.query.status) return -1;
+      if (a.status !== req.query.status && b.status === req.query.status) return 1;
+      return 0;
+    });
+  } else {
+    // Filter if status provided but not sorting (standard behavior)
+    if (req.query.status && req.query.status !== "all") {
+       normalizedRooms = normalizedRooms.filter(room => room.status === req.query.status);
+    }
+  }
 
   res.json({ success: true, data: { rooms: normalizedRooms } });
 }));
