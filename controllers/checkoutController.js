@@ -10,6 +10,7 @@ const Payment = require("../models/Admin/paymentModel");
 const RoomAdvance = require("../models/Admin/roomAdvanceModel");
 const CompanyLedger = require("../models/Admin/companyLedgerModel");
 const FolioTransaction = require("../models/Admin/folioTransactionModel");
+const HousekeepingTask = require("../models/Admin/housekeepingTaskModel");
 const AuditLog = require("../models/AuditLog");
 const { calculateGSTBreakdown } = require("../utils/gstCalculator");
 const { generateCheckoutInvoicePdf } = require("../utils/invoiceGenerator");
@@ -538,6 +539,33 @@ exports.completeCheckout = async (req, res) => {
           { status: "available", hkStatus: housekeepingStatus },
           writeOptions
         );
+
+        if (housekeepingStatus === "dirty") {
+          await HousekeepingTask.findOneAndUpdate(
+            {
+              hotelId,
+              roomId,
+              taskType: "checkout",
+              status: { $in: ["pending", "in-progress"] },
+            },
+            {
+              $setOnInsert: {
+                hotelId,
+                roomId,
+                taskType: "checkout",
+                priority: "medium",
+                status: "pending",
+                notes: `Room marked dirty after checkout for ${checkin.guestName || "guest"}`,
+              },
+            },
+            {
+              ...writeOptions,
+              upsert: true,
+              new: true,
+              setDefaultsOnInsert: true,
+            }
+          );
+        }
       }
 
       const bookingReference = checkin.bookingNumber || checkin.bookingNo;

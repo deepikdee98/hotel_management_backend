@@ -6,7 +6,7 @@ const {createGuest, getGuests, updateGuest, deleteGuest} = require("../../contro
 const { protect } = require("../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../middleware/roleMiddleware");
 
-router.use(protect, authorizeRoles("staff"));
+router.use(protect, authorizeRoles("staff", "hoteladmin"));
 
 router.route("/").post(createGuest).get(getGuests);
 router.route("/:id").put(updateGuest).delete(deleteGuest);

@@ -167,14 +167,13 @@ const updateReservationStatus = async (req, res) => {
 
     const allowedStatuses = [
       "confirmed",
-      "checked-in",
-      "checked-out",
-      "cancelled"
+      "cancelled",
+      "no-show"
     ];
 
     if (!allowedStatuses.includes(status)) {
       return res.status(400).json({
-        message: "Invalid status"
+        message: `Manual status update to '${status}' is not allowed. Please use the Check-In or Check-Out process.`
       });
     }
 
@@ -189,13 +188,7 @@ const updateReservationStatus = async (req, res) => {
     reservation.status = status;
     await reservation.save();
 
-    if (status === "checked-in") {
-      await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
-        status: "occupied"
-      });
-    }
-
-    if (status === "checked-out" || status === "cancelled") {
+    if (status === "cancelled") {
       await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
         status: "available",
         hkStatus: "dirty"
@@ -207,6 +200,12 @@ const updateReservationStatus = async (req, res) => {
         status: "reserved"
       });
     }
+
+    if (status === "no-show") {
+        await Room.findOneAndUpdate({ _id: reservation.room, hotelId: req.user.hotelId }, {
+          status: "available"
+        });
+      }
 
     res.json({
       message: "Reservation status updated",

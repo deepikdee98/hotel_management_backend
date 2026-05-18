@@ -42,7 +42,7 @@ const getOrCreateSystemConfig = async (hotelId, now, session = null) => {
         currentFinancialYear,
       },
     },
-    { upsert: true, new: true, session }
+    { upsert: true, returnDocument: "after", session }
   );
 };
 
@@ -93,7 +93,7 @@ const generateBookingNumber = async (hotelId, session = null, date = new Date())
   const updatedConfig = await SystemConfig.findOneAndUpdate(
     { hotelId },
     updatePipeline,
-    { new: true, session, updatePipeline: true }
+    { returnDocument: "after", session, updatePipeline: true }
   );
 
   const allocatedNumber = Math.max(

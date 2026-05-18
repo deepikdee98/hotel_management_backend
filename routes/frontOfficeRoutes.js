@@ -24,6 +24,7 @@ const OfferLog = require("../models/Admin/offerLogModel");
 const NightAudit = require("../models/Admin/nightAuditModel");
 const SystemConfig = require("../models/SystemConfig");
 const generateBookingNumber = require("../controllers/Admin/FrontOffice/Reception/CheckIn/generateBookingNumber");
+const expireRoomBlocks = require("../utils/expireRoomBlocks");
 
 const {
   getReservations,
@@ -159,7 +160,7 @@ const resolveFolioContext = async (folioId, hotelId) => {
     }
 
     const activeRoom = directCheckin.roomNumber
-      ? await Room.findOne({ _id: directCheckin.roomNumber, hotelId, status: "occupied" })
+      ? await Room.findOne({ _id: directCheckin.roomNumber, hotelId })
       : null;
 
     if (!activeRoom) {
@@ -547,6 +548,8 @@ router.post("/rate-plans", asyncHandler(async (req, res) => {
 
 // Rooms
 router.get("/rooms", asyncHandler(async (req, res) => {
+  await expireRoomBlocks({ hotelId: req.user.hotelId });
+
   const filter = { hotelId: req.user.hotelId };
 
   if (req.query.floor) {
@@ -573,7 +576,31 @@ router.get("/rooms", asyncHandler(async (req, res) => {
   }).select("roomNumber guestName bookingNumber bookingNo checkInDate nights adultMale adultFemale children mobileNo");
 
   const activeByRoom = new Map(activeCheckins.map((item) => [String(item.roomNumber), item]));
+  const folioPairs = await Promise.all(
+    activeCheckins.map(async (item) => {
+      const folio = await ensureOpenFolioForCheckin(item, req.user.hotelId);
+      return [String(item._id), folio];
+    })
+  );
+  const folioByCheckin = new Map(folioPairs);
+
+  // Fetch active reservations for reserved rooms
+  const reservedRooms = rooms.filter(r => r.status === "reserved");
+  const reservedRoomIds = reservedRooms.map(r => r._id);
+  const reservedRoomNumbers = reservedRooms.map(r => r.roomNumber);
+
+  const activeReservations = await Reservation.find({
+    hotelId: req.user.hotelId,
+    $or: [
+      { room: { $in: reservedRoomIds } },
+      { roomNumber: { $in: reservedRoomNumbers } }
+    ],
+    status: { $in: ["confirmed", "no-show"] }
+  }).select("room roomNumber guestName reservationId bookingNumber bookingNo checkInDate checkOutDate adults children phone email");
   
+  const reservationsByRoomId = new Map(activeReservations.filter(res => res.room).map(res => [String(res.room), res]));
+  const reservationsByRoomNo = new Map(activeReservations.filter(res => res.roomNumber).map(res => [String(res.roomNumber), res]));
+
   // Fetch active blocks for blocked rooms
   const blockedRoomIds = rooms.filter(r => r.status === "blocked").map(r => r._id);
   const activeBlocks = await BlockRoom.find({
@@ -603,12 +630,34 @@ router.get("/rooms", asyncHandler(async (req, res) => {
         guestName: activeCheckin.guestName,
         bookingNumber: activeCheckin.bookingNumber || activeCheckin.bookingNo,
         checkinId: activeCheckin._id,
+        folioId: folioByCheckin.get(String(activeCheckin._id))?._id || activeCheckin._id,
         checkInDate: activeCheckin.checkInDate || checkInDate.toISOString(),
         checkOutDate: checkOutDate.toISOString(),
         adults: (activeCheckin.adultMale || 0) + (activeCheckin.adultFemale || 0),
         children: activeCheckin.children || 0,
         phone: activeCheckin.mobileNo,
         remainingDays: remainingDays > 0 ? remainingDays : 0,
+      };
+    }
+
+    const activeReservation = reservationsByRoomId.get(String(room._id)) || reservationsByRoomNo.get(String(room.roomNumber));
+    if (room.status === "reserved" && activeReservation) {
+      const objectRoom = room.toObject();
+      return {
+        ...objectRoom,
+        guestName: activeReservation.guestName,
+        bookingNumber: activeReservation.bookingNumber || activeReservation.bookingNo,
+        bookingId: activeReservation.bookingNumber || activeReservation.bookingNo || activeReservation.reservationId,
+        checkIn: activeReservation.checkInDate,
+        checkOut: activeReservation.checkOutDate,
+        checkInDate: activeReservation.checkInDate,
+        checkOutDate: activeReservation.checkOutDate,
+        adults: activeReservation.adults || 0,
+        children: activeReservation.children || 0,
+        phone: activeReservation.phone,
+        email: activeReservation.email,
+        reservationId: activeReservation.reservationId || activeReservation._id,
+        _reservationObjectId: activeReservation._id,
       };
     }
 
@@ -731,7 +780,7 @@ router.get("/in-house", asyncHandler(async (req, res) => {
   const filtered = checkins.filter((item) => {
     if (!item.roomNumber) return false;
     if (String(item.roomNumber.hotelId) !== String(req.user.hotelId)) return false;
-    if (item.roomNumber.status !== "occupied") return false;
+    // Any active checkin should be considered in-house even if room status is inconsistent
     if (req.query.floor && String(item.roomNumber.floor) !== String(req.query.floor)) return false;
     if (req.query.roomType && String(item.roomNumber.roomType) !== String(req.query.roomType)) return false;
     return true;

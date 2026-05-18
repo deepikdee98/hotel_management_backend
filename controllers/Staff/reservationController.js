@@ -193,7 +193,7 @@ exports.updateReservationStatus = async (req, res) => {
     }
 
 
-    const validStatuses = ["confirmed", "checked-in", "checked-out", "cancelled"];
+    const validStatuses = ["confirmed", "checked-in", "checked-out", "cancelled", "no-show"];
 
     if (!validStatuses.includes(status)) {
       return res.status(400).json({
@@ -203,17 +203,10 @@ exports.updateReservationStatus = async (req, res) => {
     }
 
     if (status === "checked-in") {
-      if (reservation.status !== "confirmed") {
+      if (reservation.status !== "confirmed" && reservation.status !== "no-show") {
         return res.status(400).json({
           success: false,
-          message: "Only confirmed reservations can be checked-in",
-        });
-      }
-
-      if ((reservation.paidAmount || 0) < (reservation.totalAmount || 0)) {
-        return res.status(400).json({
-          success: false,
-          message: "Pending payment. Please clear dues before checkout.",
+          message: "Only confirmed or no-show reservations can be checked-in",
         });
       }
 

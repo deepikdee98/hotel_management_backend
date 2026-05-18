@@ -1,5 +1,6 @@
 const BlockRoom = require("../../../../../models/Admin/blockRoomModel");
 const Room = require("../../../../../models/Admin/roomModel");
+const expireRoomBlocks = require("../../../../../utils/expireRoomBlocks");
 
 // @desc    Block a room 
 // @route   POST /api/admin/frontoffice/reception/block-room
@@ -52,6 +53,8 @@ const blockRoom = async (req, res) => {
 
 const getBlockedRooms = async (req, res) => {
   try {
+    await expireRoomBlocks({ hotelId: req.user.hotelId });
+
     const data = await BlockRoom.find({ hotelId: req.user.hotelId, isActive: true })
       .populate("room", "roomNumber")
       .sort({ createdAt: -1 });

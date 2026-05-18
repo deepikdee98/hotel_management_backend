@@ -4,12 +4,16 @@ if (dotenv.error) {
   console.error("Error loading .env file:", dotenv.error);
 } else {
   console.log(".env file loaded successfully");
+  if (!process.env.ACCESS_TOKEN_SECRET) {
+    console.error("CRITICAL: ACCESS_TOKEN_SECRET is not defined in environment variables!");
+  }
 }
 
 const cors = require("cors");
 const connectDb = require("./config/dbConnection");
 const errorHandler = require("./middleware/errorHandler");
 const { startNightAuditJob } = require("./jobs/nightAudit");
+const { startRoomBlockExpiryJob } = require("./jobs/roomBlockExpiry");
 const { apiLimiter, securityHeaders } = require("./middleware/securityMiddleware");
 
 connectDb();
@@ -75,6 +79,7 @@ app.use("/api/referrals", require("./routes/referralRoutes"));
 app.use(errorHandler);
 
 startNightAuditJob();
+startRoomBlockExpiryJob();
 
 app.listen(port,"0.0.0.0", () => {
   console.log(`Server running on port ${port}`);

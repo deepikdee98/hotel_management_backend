@@ -13,13 +13,17 @@ const authorizeModule = (moduleName) => {
     }
 
     const assignedModules = Array.isArray(req.user.modules) ? req.user.modules : [];
+    const allowedModules = Array.isArray(moduleName) ? moduleName : [moduleName];
 
-    if (["hoteladmin", "staff"].includes(req.user.role) && assignedModules.includes(moduleName)) {
+    if (
+      ["hoteladmin", "staff"].includes(req.user.role) &&
+      allowedModules.some((module) => assignedModules.includes(module))
+    ) {
       return next();
     }
 
     return res.status(403).json({
-      message: `Access denied. You do not have access to the ${moduleName} module.`,
+      message: `Access denied. You do not have access to the ${allowedModules.join(" or ")} module.`,
     });
   };
 };

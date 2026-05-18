@@ -7,6 +7,45 @@ const Hotel = require('../../../../../models/SuperAdmin/hotelModel');
 const Reservation = require('../../../../../models/Admin/reservationModel');
 const generateBookingNumber = require('./generateBookingNumber');
 
+const parseStructuredValue = (value, fallback) => {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "string") return value;
+
+  const input = value.trim();
+  if (!input) return fallback;
+
+  try {
+    return JSON.parse(input);
+  } catch {
+    // Some clients send JS-like strings, e.g. [{ name: 'A', separateBill: true }].
+    try {
+      const jsonLike = input
+        .replace(/([{,]\s*)([A-Za-z_$][\w$]*)\s*:/g, '$1"$2":')
+        .replace(/'/g, '"');
+      return JSON.parse(jsonLike);
+    } catch {
+      return fallback;
+    }
+  }
+};
+
+const normalizeObjectArray = (value) => {
+  const parsed = Array.isArray(value) && value.length === 1 && typeof value[0] === "string"
+    ? parseStructuredValue(value[0], [])
+    : parseStructuredValue(value, []);
+
+  const rows = Array.isArray(parsed) ? parsed : parsed && typeof parsed === "object" ? [parsed] : [];
+  return rows.filter((item) => item && typeof item === "object" && !Array.isArray(item));
+};
+
+const normalizeObjectValue = (value) => {
+  const parsed = Array.isArray(value) && value.length === 1 && typeof value[0] === "string"
+    ? parseStructuredValue(value[0], {})
+    : parseStructuredValue(value, {});
+
+  return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+};
+
 const generateBookingGroupId = async (hotelId) => {
   const prefix = `GRP-${new Date().getFullYear()}`;
   const lastGroup = await Checkin.findOne({
@@ -192,6 +231,10 @@ const createCheckIn = async (req, res) => {
     if (req.body.ledgerAc !== undefined && !checkinData.ledgerAccount) checkinData.ledgerAccount = req.body.ledgerAc;
     if (req.body.checkoutPlan !== undefined && !checkinData.checkoutPlan) checkinData.checkoutPlan = req.body.checkoutPlan;
     if (req.body.gstIn !== undefined && !checkinData.gstNumber) checkinData.gstNumber = req.body.gstIn;
+
+    if (checkinData.companions !== undefined) checkinData.companions = normalizeObjectArray(checkinData.companions);
+    if (checkinData.services !== undefined) checkinData.services = normalizeObjectArray(checkinData.services);
+    if (checkinData.companyInfo !== undefined) checkinData.companyInfo = normalizeObjectValue(checkinData.companyInfo);
     
     // Resolve roomType and planType if they are passed as codes/names instead of ObjectIds
     if (checkinData.roomType && !mongoose.Types.ObjectId.isValid(checkinData.roomType)) {
@@ -607,6 +650,10 @@ const updateCheckIn = async (req, res) => {
     if (req.body.checkoutPlan !== undefined && !updateData.checkoutPlan) updateData.checkoutPlan = req.body.checkoutPlan;
     if (req.body.gstIn !== undefined && !updateData.gstNumber) updateData.gstNumber = req.body.gstIn;
 
+    if (updateData.companions !== undefined) updateData.companions = normalizeObjectArray(updateData.companions);
+    if (updateData.services !== undefined) updateData.services = normalizeObjectArray(updateData.services);
+    if (updateData.companyInfo !== undefined) updateData.companyInfo = normalizeObjectValue(updateData.companyInfo);
+
     // Resolve roomType and planType if they are passed as codes/names instead of ObjectIds
     if (updateData.roomType && !mongoose.Types.ObjectId.isValid(updateData.roomType)) {
       const rt = await mongoose.model("RoomType").findOne({
@@ -650,7 +697,7 @@ const updateCheckIn = async (req, res) => {
           }
     }
 
-    const updated = await Checkin.findOneAndUpdate({ _id: id, hotelId: req.user.hotelId }, updateData, { new: true })
+    const updated = await Checkin.findOneAndUpdate({ _id: id, hotelId: req.user.hotelId }, updateData, { returnDocument: "after" })
       .populate({ path: "roomNumber", select: "roomNumber" })
       .populate({ path: "roomType", select: "code" })
       .populate({ path: "planType", select: "code" });

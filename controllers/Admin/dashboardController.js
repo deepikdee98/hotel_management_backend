@@ -3,6 +3,7 @@ const Reservation = require("../../models/Admin/reservationModel");
 const Staff = require("../../models/userModel");
 const ServiceTransaction = require("../../models/Admin/serviceTransactionModel");
 const BlockRoom = require("../../models/Admin/blockRoomModel");
+const expireRoomBlocks = require("../../utils/expireRoomBlocks");
 
 // @desc Admin Dashboard
 // @route GET /api/admin/dashboard
@@ -11,6 +12,8 @@ const BlockRoom = require("../../models/Admin/blockRoomModel");
 const getDashboard = async (req, res) => {
   try {
     const hotelId = req.user.hotelId;
+    await expireRoomBlocks({ hotelId });
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 

@@ -163,7 +163,7 @@ const checkinSchema = new mongoose.Schema({
     name: String,
     mobile: String,
     gender: String,
-    type: String,
+    type: { type: String },
     idType: String,
     idNumber: String,
     separateBill: { type: Boolean, default: false },

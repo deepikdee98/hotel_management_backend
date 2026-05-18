@@ -29,6 +29,7 @@ const housekeepingTaskSchema = new mongoose.Schema(
       default: "pending",
     },
     assignedTo: String,
+    previousRoomStatus: String,
     notes: String,
     completedAt: Date,
   },

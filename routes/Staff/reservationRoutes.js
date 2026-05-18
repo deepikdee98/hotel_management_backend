@@ -6,7 +6,7 @@ const {getStaffReservations,createStaffReservation,updateReservationStatus} = re
 const { protect } = require("../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../middleware/roleMiddleware");
 
-router.use(protect, authorizeRoles("staff"));
+router.use(protect, authorizeRoles("staff", "hoteladmin"));
 
 router.get("/", getStaffReservations);
 router.post("/", createStaffReservation);
