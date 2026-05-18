@@ -43,20 +43,13 @@ const roomAdvanceSchema = new mongoose.Schema(
 
   paymentMode: {
     type: String,
-    enum: ["Cash", "Card", "UPI", "Online", "Bank Transfer", "Other"],
+    trim: true,
     required: true
   },
 
   ledgerAccount: {
     type: String,
-    enum: [
-      "HDFC Hotel Account",
-      "SBI Hotel Account",
-      "ICICI Hotel Account",
-      "Cash Account",
-      "Cash",
-      "Other"
-    ]
+    trim: true
   },
 
   panNo: {

@@ -998,6 +998,7 @@ router.post("/in-house/:folioId/payment", asyncHandler(async (req, res) => {
   const advance = await RoomAdvance.create({
     hotelId: req.user.hotelId,
     checkin: checkin._id,
+    guestId: checkin._id,
     roomNumber: checkin.roomNumber,
     bookingNo: checkin.bookingNo,
     guestName: checkin.guestName,

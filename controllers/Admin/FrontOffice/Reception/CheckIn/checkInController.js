@@ -301,7 +301,8 @@ const createCheckIn = async (req, res) => {
         throw new Error("Room not found or invalid room number");
     }
 
-    const room = await Room.findOne({ _id: checkinData.roomNumber, hotelId: req.user.hotelId });
+    const room = await Room.findOne({ _id: checkinData.roomNumber, hotelId: req.user.hotelId })
+      .populate("roomType", "baseRate gstPercentage gstType");
 
     if (!room) {
       throw new Error("Room not found");
@@ -327,7 +328,20 @@ const createCheckIn = async (req, res) => {
 
     checkinData.hotelId = room.hotelId;
     checkinData.roomNumber = room._id;
-    checkinData.roomType = room.roomType;
+    checkinData.roomType = room.roomType?._id || room.roomType;
+
+    const hasPlanCharges = Number.isFinite(Number(checkinData.planCharges)) && Number(checkinData.planCharges) > 0;
+    if (!hasPlanCharges) {
+      checkinData.planCharges = Number(room.rate || room.roomType?.baseRate || 0);
+    }
+
+    if (checkinData.gstPercentage === undefined && room.roomType?.gstPercentage !== undefined) {
+      checkinData.gstPercentage = room.roomType.gstPercentage;
+    }
+
+    if (checkinData.gstType === undefined && room.roomType?.gstType) {
+      checkinData.gstType = room.roomType.gstType;
+    }
 
     let reservation = null;
     if (req.body.reservationId) {

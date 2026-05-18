@@ -41,6 +41,21 @@ const createRoomAdvance = async (req, res) => {
       });
     }
 
+    const amount = Number(advanceAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Advance amount must be greater than 0"
+      });
+    }
+
+    if (!paymentMode) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment mode is required"
+      });
+    }
+
     const room = await Room.findOne({ _id: roomNumber, hotelId: req.user.hotelId });
 
     if (!room) {
@@ -66,7 +81,7 @@ const createRoomAdvance = async (req, res) => {
       roomNumber,
       bookingNo: checkin.bookingNumber || checkin.bookingNo || checkin._id,
       guestName: checkin.guestName,
-      advanceAmount,
+      advanceAmount: amount,
       paymentMode,
       ledgerAccount,
       panNo,
@@ -84,7 +99,7 @@ const createRoomAdvance = async (req, res) => {
     console.error(error);
     res.status(500).json({
       success: false,
-      message: "Failed to record advance payment"
+      message: error.message || "Failed to record advance payment"
     });
   }
 };
