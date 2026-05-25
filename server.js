@@ -10,8 +10,11 @@ if (dotenv.error) {
 }
 
 const cors = require("cors");
+const swaggerUi = require("swagger-ui-express");
 const connectDb = require("./config/dbConnection");
+const swaggerSpec = require("./config/swagger");
 const errorHandler = require("./middleware/errorHandler");
+const responseTime = require("./middleware/responseTime");
 const { startNightAuditJob } = require("./jobs/nightAudit");
 const { startRoomBlockExpiryJob } = require("./jobs/roomBlockExpiry");
 const { apiLimiter, securityHeaders } = require("./middleware/securityMiddleware");
@@ -53,6 +56,8 @@ app.use(
   })
 );
 
+app.use(responseTime);
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(securityHeaders);
 app.use(apiLimiter);
 app.use(express.json());

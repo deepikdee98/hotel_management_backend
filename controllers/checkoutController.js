@@ -166,22 +166,24 @@ exports.completeCheckout = async (req, res) => {
     });
     const groupFolioIds = groupFolios.map((item) => item._id);
 
-    const folioCharges = await FolioTransaction.find({
+    const allTransactions = await FolioTransaction.find({
       hotelId,
       folioId: { $in: groupFolioIds.length ? groupFolioIds : [folio._id] },
-      type: { $in: ["room-tariff", "service-charge"] },
     });
 
-    const postedRoomCharges = folioCharges
+    const roomCharges = allTransactions
       .filter((tx) => tx.type === "room-tariff")
-      .reduce((sum, tx) => sum + toNum(tx.totalAmount || tx.amount), 0);
-    const bookedRoomCharges = groupCheckins.reduce(
+      .reduce((sum, tx) => sum + toNum(tx.totalAmount || tx.amount), 0) || groupCheckins.reduce(
       (sum, item) => sum + Math.max(0, toNum(item.planCharges) + toNum(item.foodCharges) - toNum(item.discount)),
       0
     );
-    const roomCharges = postedRoomCharges || bookedRoomCharges;
-    const serviceCharges = folioCharges
+
+    const serviceCharges = allTransactions
       .filter((tx) => tx.type === "service-charge")
+      .reduce((sum, tx) => sum + toNum(tx.totalAmount || tx.amount), 0);
+
+    const settlementTransactions = allTransactions
+      .filter((tx) => ["payment", "refund", "paidout", "discount", "settlement"].includes(tx.type))
       .reduce((sum, tx) => sum + toNum(tx.totalAmount || tx.amount), 0);
 
     const baseAmount = roomCharges + serviceCharges;
@@ -208,8 +210,8 @@ exports.completeCheckout = async (req, res) => {
       hotelId,
       checkin: { $in: groupCheckinIds },
     });
-    const advancePaid = Number(advanceDocs.reduce((sum, item) => sum + toNum(item.advanceAmount), 0).toFixed(2));
-    const amountDue = Number(Math.max(0, adjustedTotalAmount - advancePaid).toFixed(2));
+    const advancePaid = Number((advanceDocs.reduce((sum, item) => sum + toNum(item.advanceAmount), 0) + settlementTransactions).toFixed(2));
+    const amountDue = Number((adjustedTotalAmount - advancePaid).toFixed(2));
 
     let totalPaid = 0;
     let refund = 0;
@@ -220,25 +222,43 @@ exports.completeCheckout = async (req, res) => {
 
     if (normalizedBillingType === "full") {
       const paymentMode = String(payment.mode || "").toLowerCase();
-      if (!ALLOWED_PAYMENT_MODES.has(paymentMode)) {
-        return res.status(400).json({ success: false, message: "Invalid payment mode for full billing" });
-      }
-      const amountPaid = toNum(payment.amountPaid);
-      if (amountPaid < amountDue) {
-        return res.status(400).json({ success: false, message: "Payment incomplete" });
+      const amountPaidAtCheckout = toNum(payment.amountPaid);
+      const finalBalance = Number((amountDue - amountPaidAtCheckout).toFixed(2));
+
+      // 1. Check for Pending Payment
+      if (finalBalance > 0.01) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Pending payment settlement. Balance: Rs ${finalBalance}`,
+          data: { balance: finalBalance }
+        });
       }
 
-      totalPaid = amountPaid;
-      refund = amountPaid > amountDue ? amountPaid - amountDue : 0;
+      // 2. Check for Pending Refund (Advance Paid > Final Charges)
+      if (finalBalance < -0.01) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Refund settlement pending. Refund Due: Rs ${Math.abs(finalBalance)}. Please process refund before checkout.`,
+          data: { refundDue: Math.abs(finalBalance) }
+        });
+      }
+
+      if (amountDue > 0 && !ALLOWED_PAYMENT_MODES.has(paymentMode)) {
+        return res.status(400).json({ success: false, message: "Invalid payment mode for full billing" });
+      }
+
+      totalPaid = amountPaidAtCheckout;
+      refund = amountPaidAtCheckout > amountDue ? amountPaidAtCheckout - amountDue : 0;
       paymentStatus = "paid";
+      
       paymentRecords = [
         {
           hotelId,
           folioId: folio._id,
           payerName: checkin.guestName || "Guest",
-          amount: amountDue,
-          paid: amountPaid,
-          mode: paymentMode,
+          amount: amountDue > 0 ? amountDue : 0,
+          paid: amountPaidAtCheckout,
+          mode: paymentMode || "cash",
           refund,
           billingType: "full",
           recordedBy: req.user._id || null,

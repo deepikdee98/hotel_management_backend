@@ -13,6 +13,7 @@ try {
 }
 
 const usernameRegex = /^[a-zA-Z0-9_]+$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const validateUsername = (username) => {
   if (!username) {
@@ -28,6 +29,33 @@ const validateUsername = (username) => {
   }
 
   return null;
+};
+
+const normalizePhone = (phone) => String(phone || "").replace(/\D/g, "");
+
+const buildPhoneRegex = (phone) => new RegExp(`^\\D*${phone.split("").join("\\D*")}\\D*$`);
+
+const validateEmail = (email) => {
+  if (!email) return "Email is required";
+  if (!emailRegex.test(email)) return "Enter a valid email address";
+  return null;
+};
+
+const validatePhone = (phone) => {
+  if (!phone) return "Phone number is required";
+
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) {
+    return "Phone number must contain 7 to 15 digits";
+  }
+
+  return null;
+};
+
+const getDuplicateAccountMessage = ({ existingHotelEmail, existingHotelPhone, existingUserEmail, existingUserPhone }) => {
+  if (existingHotelEmail || existingUserEmail) return "Email already exists";
+  if (existingHotelPhone || existingUserPhone) return "Phone number already exists";
+  return "Account already exists";
 };
 
 // @desc    Create new hotel
@@ -51,9 +79,10 @@ const createHotel = asyncHandler(async (req, res) => {
   } = req.body;
   const cleanAdminUsername = String(adminUsername || "").trim();
   const cleanEmail = String(email || "").trim().toLowerCase();
+  const cleanPhone = normalizePhone(phone);
 
   // Validate required fields
-  if (!name || !cleanAdminUsername || !cleanEmail || !phone || !address || !city || !country || !adminPassword || !confirmPassword) {
+  if (!name || !cleanAdminUsername || !cleanEmail || !cleanPhone || !address || !city || !country || !adminPassword || !confirmPassword) {
     res.status(constants.VALIDATION_ERROR);
     throw new Error("All required fields must be filled");
   }
@@ -64,23 +93,44 @@ const createHotel = asyncHandler(async (req, res) => {
     throw new Error(usernameError);
   }
 
+  const emailError = validateEmail(cleanEmail);
+  if (emailError) {
+    res.status(constants.VALIDATION_ERROR);
+    throw new Error(emailError);
+  }
+
+  const phoneError = validatePhone(cleanPhone);
+  if (phoneError) {
+    res.status(constants.VALIDATION_ERROR);
+    throw new Error(phoneError);
+  }
+
   // Check password match
   if (adminPassword !== confirmPassword) {
     res.status(constants.VALIDATION_ERROR);
     throw new Error("Passwords do not match");
   }
 
-  // Check if hotel already exists
-  const existingHotel = await Hotel.findOne({ email: cleanEmail });
-  if (existingHotel) {
-    res.status(constants.VALIDATION_ERROR);
-    throw new Error("Hotel already exists");
-  }
+  const [
+    existingHotelEmail,
+    existingHotelPhone,
+    existingUserEmail,
+    existingUserPhone,
+  ] = await Promise.all([
+    Hotel.findOne({ email: cleanEmail }),
+    Hotel.findOne({ phone: buildPhoneRegex(cleanPhone) }),
+    User.findOne({ email: cleanEmail }),
+    User.findOne({ phone: buildPhoneRegex(cleanPhone) }),
+  ]);
 
-  const existingUserEmail = await User.findOne({ email: cleanEmail });
-  if (existingUserEmail) {
+  if (existingHotelEmail || existingHotelPhone || existingUserEmail || existingUserPhone) {
     res.status(constants.VALIDATION_ERROR);
-    throw new Error("User already exists");
+    throw new Error(getDuplicateAccountMessage({
+      existingHotelEmail,
+      existingHotelPhone,
+      existingUserEmail,
+      existingUserPhone,
+    }));
   }
 
   // Hash admin password
@@ -94,7 +144,7 @@ const createHotel = asyncHandler(async (req, res) => {
   const hotel = await Hotel.create({
     name,
     email: cleanEmail,
-    phone,
+    phone: cleanPhone,
     address,
     city,
     country,
@@ -115,7 +165,7 @@ const createHotel = asyncHandler(async (req, res) => {
     hotelId: hotel._id,
     modules: modules || [],
     isActive: true,
-    phone: phone || "",
+    phone: cleanPhone,
     timezone: "",
     avatar: avatar || ""
   });
@@ -234,9 +284,48 @@ const updateHotel = asyncHandler(async (req, res) => {
     throw new Error("Hotel not found");
   }
 
+  const updateData = { ...req.body };
+
+  if (updateData.email !== undefined) {
+    updateData.email = String(updateData.email || "").trim().toLowerCase();
+    const emailError = validateEmail(updateData.email);
+    if (emailError) {
+      res.status(constants.VALIDATION_ERROR);
+      throw new Error(emailError);
+    }
+  }
+
+  if (updateData.phone !== undefined) {
+    updateData.phone = normalizePhone(updateData.phone);
+    const phoneError = validatePhone(updateData.phone);
+    if (phoneError) {
+      res.status(constants.VALIDATION_ERROR);
+      throw new Error(phoneError);
+    }
+  }
+
+  const duplicateQueries = [];
+  if (updateData.email && updateData.email !== hotel.email) {
+    duplicateQueries.push(Hotel.findOne({ _id: { $ne: req.params.id }, email: updateData.email }));
+    duplicateQueries.push(User.findOne({ email: updateData.email }));
+  }
+  if (updateData.phone && updateData.phone !== normalizePhone(hotel.phone)) {
+    duplicateQueries.push(Hotel.findOne({ _id: { $ne: req.params.id }, phone: buildPhoneRegex(updateData.phone) }));
+    duplicateQueries.push(User.findOne({ phone: buildPhoneRegex(updateData.phone) }));
+  }
+
+  if (duplicateQueries.length > 0) {
+    const duplicates = await Promise.all(duplicateQueries);
+    if (duplicates.some(Boolean)) {
+      const hasEmailDuplicate = updateData.email && duplicates.some((duplicate) => duplicate?.email === updateData.email);
+      res.status(constants.VALIDATION_ERROR);
+      throw new Error(hasEmailDuplicate ? "Email already exists" : "Phone number already exists");
+    }
+  }
+
   const updatedHotel = await Hotel.findByIdAndUpdate(
     req.params.id,
-    req.body,
+    updateData,
     { new: true }
   );
 

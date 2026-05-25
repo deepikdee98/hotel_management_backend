@@ -8,6 +8,7 @@ try {
 }
 
 const usernameRegex = /^[a-zA-Z0-9_]+$/;
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const validateUsername = (username) => {
   if (!username) {
@@ -25,6 +26,53 @@ const validateUsername = (username) => {
   return null;
 };
 
+const normalizePhone = (phone) => String(phone || "").replace(/\D/g, "");
+
+const buildPhoneRegex = (phone) => new RegExp(`^\\D*${phone.split("").join("\\D*")}\\D*$`);
+
+const validateEmail = (email) => {
+  if (!email) return "Email is required";
+  if (!emailRegex.test(email)) return "Enter a valid email address";
+  return null;
+};
+
+const validatePhone = (phone) => {
+  if (!phone) return "Phone number is required";
+
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 7 || digits.length > 15) {
+    return "Phone number must contain 7 to 15 digits";
+  }
+
+  return null;
+};
+
+const buildDuplicateQuery = ({ hotelId, username, email, phone, excludeUserId }) => {
+  const conditions = [];
+
+  if (hotelId && username) conditions.push({ hotelId, username });
+  if (email) conditions.push({ email });
+  if (phone) {
+    conditions.push({ phone });
+    conditions.push({ phone: buildPhoneRegex(phone) });
+  }
+
+  if (conditions.length === 0) return null;
+
+  const query = { $or: conditions };
+  if (excludeUserId) query._id = { $ne: excludeUserId };
+
+  return query;
+};
+
+const getDuplicateUserMessage = (user, { username, email, phone }) => {
+  if (!user) return null;
+  if (username && user.username === username) return "Username already exists";
+  if (email && user.email === email) return "Email already exists";
+  if (phone && normalizePhone(user.phone) === phone) return "Phone number already exists";
+  return "User already exists";
+};
+
 // @desc    Create Staff
 // @route   POST /admin/staff
 // @access  Private (Hotel Admin)
@@ -33,10 +81,11 @@ const createStaff = async (req, res) => {
     const { name, username, email, password, modules, phone, role } = req.body;
     const cleanUsername = String(username || "").trim();
     const cleanEmail = String(email || "").trim().toLowerCase();
+    const cleanPhone = normalizePhone(phone);
 
-    if (!cleanUsername || !cleanEmail || !password) {
+    if (!cleanUsername || !cleanEmail || !cleanPhone || !password) {
       return res.status(400).json({
-        message: "Username, email and password are required",
+        message: "Username, email, phone number and password are required",
       });
     }
 
@@ -47,22 +96,34 @@ const createStaff = async (req, res) => {
       });
     }
 
-    const existingEmail = await User.findOne({ email: cleanEmail });
-
-    if (existingEmail) {
+    const emailError = validateEmail(cleanEmail);
+    if (emailError) {
       return res.status(400).json({
-        message: "User already exists",
+        message: emailError,
       });
     }
 
-    const existingUsername = await User.findOne({
+    const phoneError = validatePhone(cleanPhone);
+    if (phoneError) {
+      return res.status(400).json({
+        message: phoneError,
+      });
+    }
+
+    const existingUser = await User.findOne(buildDuplicateQuery({
       hotelId: req.user.hotelId,
       username: cleanUsername,
-    });
+      email: cleanEmail,
+      phone: cleanPhone,
+    }));
 
-    if (existingUsername) {
+    if (existingUser) {
       return res.status(400).json({
-        message: "Username already exists",
+        message: getDuplicateUserMessage(existingUser, {
+          username: cleanUsername,
+          email: cleanEmail,
+          phone: cleanPhone,
+        }),
       });
     }
 
@@ -75,7 +136,7 @@ const createStaff = async (req, res) => {
       email: cleanEmail,
       password: hashedPassword,
       role: userRole,
-      phone,
+      phone: cleanPhone,
       modules,
       hotelId: req.user.hotelId,
     });
@@ -89,6 +150,12 @@ const createStaff = async (req, res) => {
     if (error.code === 11000 && error.keyPattern?.username) {
       return res.status(400).json({
         message: "Username already exists",
+      });
+    }
+
+    if (error.code === 11000 && error.keyPattern?.email) {
+      return res.status(400).json({
+        message: "Email already exists",
       });
     }
 
@@ -185,8 +252,53 @@ const updateStaff = async (req, res) => {
       });
     }
 
+    const updateData = { ...req.body };
+
+    if (updateData.username !== undefined) {
+      updateData.username = String(updateData.username || "").trim();
+      const usernameError = validateUsername(updateData.username);
+      if (usernameError) {
+        return res.status(400).json({ message: usernameError });
+      }
+    }
+
+    if (updateData.email !== undefined) {
+      updateData.email = String(updateData.email || "").trim().toLowerCase();
+      const emailError = validateEmail(updateData.email);
+      if (emailError) {
+        return res.status(400).json({ message: emailError });
+      }
+    }
+
+    if (updateData.phone !== undefined) {
+      updateData.phone = normalizePhone(updateData.phone);
+      const phoneError = validatePhone(updateData.phone);
+      if (phoneError) {
+        return res.status(400).json({ message: phoneError });
+      }
+    }
+
+    const duplicateQuery = buildDuplicateQuery({
+      hotelId: req.user.hotelId,
+      username: updateData.username,
+      email: updateData.email,
+      phone: updateData.phone,
+      excludeUserId: req.params.id,
+    });
+    const existingUser = duplicateQuery ? await User.findOne(duplicateQuery) : null;
+
+    if (existingUser) {
+      return res.status(400).json({
+        message: getDuplicateUserMessage(existingUser, {
+          username: updateData.username,
+          email: updateData.email,
+          phone: updateData.phone,
+        }),
+      });
+    }
+
     const updated = await User.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
-      req.body,
+      updateData,
       { new: true }
     ).select("-password");
 
