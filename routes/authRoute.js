@@ -12,7 +12,7 @@ const {
 } = require("../controllers/authController");
 
 const { protect } = require("../middleware/authMiddleware");
-const { authLimiter } = require("../middleware/securityMiddleware");
+const { authRateLimiter } = require("../middleware/rateLimiter");
 
 /**
  * @swagger
@@ -168,7 +168,7 @@ const { authLimiter } = require("../middleware/securityMiddleware");
  *       429:
  *         description: Too many login attempts.
  */
-router.post("/login", authLimiter, loginUser);
+router.post("/login", authRateLimiter, loginUser);
 
 /**
  * @swagger
@@ -214,11 +214,11 @@ router.post("/login", authLimiter, loginUser);
  *       429:
  *         description: Too many login attempts.
  */
-router.post("/super-admin/login", authLimiter, loginSuperAdmin);
+router.post("/super-admin/login", authRateLimiter, loginSuperAdmin);
 router.post("/refresh", refreshToken);
-router.post("/forgot-password", authLimiter, forgotPassword);
-router.post("/verify-otp", authLimiter, verifyOtp);
-router.post("/reset-password", authLimiter, resetPassword);
+router.post("/forgot-password", authRateLimiter, forgotPassword);
+router.post("/verify-otp", authRateLimiter, verifyOtp);
+router.post("/reset-password", authRateLimiter, resetPassword);
 router.post("/logout", protect, logoutUser);
 router.post("/change-password", protect, changePassword);
 

@@ -36,5 +36,7 @@ const hotelNotificationInboxSchema = new mongoose.Schema(
 );
 
 hotelNotificationInboxSchema.index({ hotelId: 1, notificationId: 1 }, { unique: true });
+hotelNotificationInboxSchema.index({ hotelId: 1, archived: 1, isRead: 1, createdAt: -1 });
+hotelNotificationInboxSchema.index({ notificationId: 1, createdAt: -1 });
 
 module.exports = mongoose.model("HotelNotificationInbox", hotelNotificationInboxSchema);

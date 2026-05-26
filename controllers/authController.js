@@ -7,6 +7,9 @@ const { constants } = require("../constants");
 const { sendOtpEmail } = require("../utils/email");
 const { generateOtp } = require("../utils/otp");
 const { sendOtpSms } = require("../utils/sms");
+const { env } = require("../config/env");
+const cache = require("../utils/cache");
+const cacheKeys = require("../utils/cacheKeys");
 
 let bcrypt;
 try {
@@ -15,7 +18,7 @@ try {
   bcrypt = require("bcryptjs");
 }
 
-const getEffectiveModules = async (user) => {
+const getEffectiveModules = async (user, knownHotel = null) => {
   if (user.role === "superadmin") {
     return Array.isArray(user.modules) ? user.modules : [];
   }
@@ -24,7 +27,7 @@ const getEffectiveModules = async (user) => {
     return Array.isArray(user.modules) ? user.modules : [];
   }
 
-  const hotel = await Hotel.findById(user.hotelId).select("modules").lean();
+  const hotel = knownHotel || await Hotel.findById(user.hotelId).select("modules").lean();
   const hotelModules = Array.isArray(hotel?.modules) ? hotel.modules : [];
 
   if (user.role === "hoteladmin") {
@@ -36,7 +39,7 @@ const getEffectiveModules = async (user) => {
 };
 
 const buildAccessToken = (user, modules) => {
-  if (!process.env.ACCESS_TOKEN_SECRET) {
+  if (!env.accessTokenSecret) {
     throw new Error("ACCESS_TOKEN_SECRET is not defined in environment variables");
   }
   return jwt.sign(
@@ -51,8 +54,8 @@ const buildAccessToken = (user, modules) => {
         tokenVersion: user.tokenVersion,
       },
     },
-    process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "1d" }
+    env.accessTokenSecret,
+    { expiresIn: env.accessTokenTtl }
   );
 };
 
@@ -64,9 +67,38 @@ const buildRefreshToken = (user) => {
         tokenVersion: user.tokenVersion,
       },
     },
-    process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
-    { expiresIn: "30d" }
+    env.refreshTokenSecret,
+    { expiresIn: env.refreshTokenTtl }
   );
+};
+
+const setTokenCookies = (res, accessToken, refreshToken) => {
+  const cookieOptions = {
+    httpOnly: true,
+    secure: env.isProduction,
+    sameSite: env.isProduction ? "strict" : "lax",
+  };
+
+  res.cookie("accessToken", accessToken, {
+    ...cookieOptions,
+    maxAge: 15 * 60 * 1000,
+  });
+  res.cookie("refreshToken", refreshToken, {
+    ...cookieOptions,
+    maxAge: 30 * 24 * 60 * 60 * 1000,
+  });
+};
+
+const buildIdentifierQuery = (input, includePhone = true) => {
+  const trimmed = String(input || "").trim();
+  const normalizedEmail = trimmed.toLowerCase();
+  const or = [{ email: normalizedEmail }, { username: trimmed }];
+  if (includePhone) {
+    const digits = trimmed.replace(/\D/g, "");
+    or.push({ phone: trimmed });
+    if (digits && digits !== trimmed) or.push({ phone: digits });
+  }
+  return { $or: or };
 };
 
 const loginUser = asyncHandler(async (req, res) => {
@@ -80,13 +112,9 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new Error("Username/email and password are mandatory");
   }
 
-  const user = await User.findOne({
-    $or: [
-      { email: loginIdentifier },
-      { username: loginIdentifier },
-      { phone: loginIdentifier },
-    ],
-  });
+  const user = await User.findOne(buildIdentifierQuery(loginIdentifier))
+    .select("_id email username phone password role hotelId modules isActive tokenVersion")
+    .lean();
 
   if (!user) {
     res.status(401);
@@ -98,9 +126,18 @@ const loginUser = asyncHandler(async (req, res) => {
     throw new Error("Your account has been deactivated. Please contact Super Admin.");
   }
 
+  const isPasswordMatch = await bcrypt.compare(password, user.password);
+
+  if (!isPasswordMatch) {
+    res.status(401);
+    throw new Error("Invalid credentials");
+  }
+
   // Check Hotel Subscription/Status for non-superadmins
   if (user.role !== 'superadmin' && user.hotelId) {
-    hotel = await Hotel.findById(user.hotelId);
+    hotel = await Hotel.findById(user.hotelId)
+      .select("name modules expiryDate isSetupCompleted status isActive")
+      .lean();
     subscription = checkSubscriptionStatus(hotel);
 
     if (!subscription.isValid) {
@@ -109,16 +146,10 @@ const loginUser = asyncHandler(async (req, res) => {
     }
   }
 
-  const isPasswordMatch = await bcrypt.compare(password, user.password);
-
-  if (!isPasswordMatch) {
-    res.status(401);
-    throw new Error("Invalid credentials");
-  }
-
-  const modules = await getEffectiveModules(user);
+  const modules = await getEffectiveModules(user, hotel);
   const accessToken = buildAccessToken(user, modules);
   const refreshToken = buildRefreshToken(user);
+  setTokenCookies(res, accessToken, refreshToken);
 
   res.status(200).json({
     message: "Login successful",
@@ -151,11 +182,10 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
 
   const user = await User.findOne({
     role: "superadmin",
-    $or: [
-      { email: loginIdentifier },
-      { username: loginIdentifier },
-    ],
-  });
+    ...buildIdentifierQuery(loginIdentifier, false),
+  })
+    .select("_id email username password role hotelId modules isActive tokenVersion")
+    .lean();
 
   if (!user) {
     res.status(401);
@@ -177,6 +207,7 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
   const modules = await getEffectiveModules(user);
   const accessToken = buildAccessToken(user, modules);
   const refreshToken = buildRefreshToken(user);
+  setTokenCookies(res, accessToken, refreshToken);
 
   res.status(200).json({
     message: "Super admin login successful",
@@ -188,7 +219,7 @@ const loginSuperAdmin = asyncHandler(async (req, res) => {
 });
 
 const refreshToken = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
+  const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
 
   if (!refreshToken) {
     res.status(400);
@@ -197,19 +228,24 @@ const refreshToken = asyncHandler(async (req, res) => {
 
   const decoded = jwt.verify(
     refreshToken,
-    process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET
+    env.refreshTokenSecret
   );
 
-  const user = await User.findById(decoded.user.id);
+  const user = await User.findById(decoded.user.id)
+    .select("_id email username role hotelId modules isActive tokenVersion")
+    .lean();
 
-  if (!user || decoded.user.tokenVersion !== user.tokenVersion) {
+  if (!user || !user.isActive || decoded.user.tokenVersion !== user.tokenVersion) {
     res.status(401);
     throw new Error("Invalid refresh token");
   }
 
   let subscription = null;
+  let hotel = null;
   if (user.role !== 'superadmin' && user.hotelId) {
-    const hotel = await Hotel.findById(user.hotelId);
+    hotel = await Hotel.findById(user.hotelId)
+      .select("name modules expiryDate isSetupCompleted status isActive")
+      .lean();
     subscription = checkSubscriptionStatus(hotel);
 
     if (!subscription.isValid) {
@@ -218,9 +254,10 @@ const refreshToken = asyncHandler(async (req, res) => {
     }
   }
 
-  const modules = await getEffectiveModules(user);
+  const modules = await getEffectiveModules(user, hotel);
   const accessToken = buildAccessToken(user, modules);
   const nextRefreshToken = buildRefreshToken(user);
+  setTokenCookies(res, accessToken, nextRefreshToken);
 
   res.status(200).json({
     message: "Token refreshed",
@@ -256,9 +293,10 @@ const changePassword = asyncHandler(async (req, res) => {
     throw new Error("Current password is incorrect");
   }
 
-  user.password = await bcrypt.hash(newPassword, 10);
+  user.password = await bcrypt.hash(newPassword, env.bcryptSaltRounds);
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
+  await cache.del(cacheKeys.authUser(user._id));
 
   res.status(200).json({
     success: true,
@@ -397,12 +435,13 @@ const resetPassword = asyncHandler(async (req, res) => {
     throw new Error("Unauthorized password reset request");
   }
 
-  user.password = await bcrypt.hash(password, 10);
+  user.password = await bcrypt.hash(password, env.bcryptSaltRounds);
   user.resetOtp = null;
   user.resetOtpExpire = null;
   user.resetOtpVerified = false;
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
+  await cache.del(cacheKeys.authUser(user._id));
 
   res.status(200).json({
     success: true,
@@ -421,6 +460,9 @@ const logoutUser = asyncHandler(async (req, res) => {
 
   user.tokenVersion = (user.tokenVersion || 0) + 1;
   await user.save();
+  await cache.del(cacheKeys.authUser(userId));
+  res.clearCookie("accessToken");
+  res.clearCookie("refreshToken");
 
   res.status(200).json({
     success: true,

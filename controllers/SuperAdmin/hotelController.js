@@ -4,6 +4,10 @@ const User = require("../../models/userModel");
 const { constants } = require("../../constants");
 const { checkSubscriptionStatus } = require("../../utils/subscriptionHelper");
 const { sendHotelAccountEmail } = require("../../utils/email");
+const cache = require("../../utils/cache");
+const cacheKeys = require("../../utils/cacheKeys");
+const { getOffsetPagination } = require("../../utils/pagination");
+const { env } = require("../../config/env");
 
 let bcrypt;
 try {
@@ -117,10 +121,10 @@ const createHotel = asyncHandler(async (req, res) => {
     existingUserEmail,
     existingUserPhone,
   ] = await Promise.all([
-    Hotel.findOne({ email: cleanEmail }),
-    Hotel.findOne({ phone: buildPhoneRegex(cleanPhone) }),
-    User.findOne({ email: cleanEmail }),
-    User.findOne({ phone: buildPhoneRegex(cleanPhone) }),
+    Hotel.exists({ email: cleanEmail }),
+    Hotel.exists({ phone: buildPhoneRegex(cleanPhone) }),
+    User.exists({ email: cleanEmail }),
+    User.exists({ phone: buildPhoneRegex(cleanPhone) }),
   ]);
 
   if (existingHotelEmail || existingHotelPhone || existingUserEmail || existingUserPhone) {
@@ -134,7 +138,7 @@ const createHotel = asyncHandler(async (req, res) => {
   }
 
   // Hash admin password
-  const hashedPassword = await bcrypt.hash(adminPassword, 10);
+  const hashedPassword = await bcrypt.hash(adminPassword, env.bcryptSaltRounds);
 
   // Set expiry date to 1 year from now
   const expiryDate = new Date();
@@ -192,6 +196,7 @@ const createHotel = asyncHandler(async (req, res) => {
     hotelAdmin,
     accountEmail,
   });
+  await cache.del(cacheKeys.superAdminDashboard);
 
 });
 
@@ -211,34 +216,31 @@ const getAllHotels = asyncHandler(async (req, res) => {
   let filter = {};
 
   if (search) {
-    filter.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { city: { $regex: search, $options: "i" } },
-      { country: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } }
-    ];
+    filter.$text = { $search: search };
   }
 
   if (status) {
     filter.status = status;
   }
 
-  const skip = (page - 1) * limit;
+  const pagination = getOffsetPagination({ page, limit }, { limit: 10, max: 100 });
 
-  const total = await Hotel.countDocuments(filter);
-
-  const hotels = await Hotel.find(filter)
+  const [total, hotels] = await Promise.all([
+    Hotel.countDocuments(filter),
+    Hotel.find(filter)
+    .select("name email phone city country totalRooms modules status isActive expiryDate createdBy createdAt")
     .populate("createdBy", "username email")
     .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(Number(limit));
+    .skip(pagination.skip)
+    .limit(pagination.limit)
+    .lean(),
+  ]);
 
   const hotelsWithSubscriptionStatus = hotels.map((hotel) => {
-    const hotelObject = hotel.toObject();
-    const subscription = checkSubscriptionStatus(hotelObject);
+    const subscription = checkSubscriptionStatus(hotel);
 
     return {
-      ...hotelObject,
+      ...hotel,
       subscriptionStatus: subscription.status,
       subscriptionMessage: subscription.message,
       subscriptionIsValid: subscription.isValid,
@@ -248,8 +250,8 @@ const getAllHotels = asyncHandler(async (req, res) => {
 
   res.status(200).json({
     total,
-    page: Number(page),
-    totalPages: Math.ceil(total / limit),
+    page: pagination.page,
+    totalPages: Math.ceil(total / pagination.limit),
     hotels: hotelsWithSubscriptionStatus
   });
 });
@@ -261,7 +263,7 @@ const getHotelById = asyncHandler(async (req, res) => {
   const hotel = await Hotel.findById(req.params.id).populate(
     "createdBy",
     "username email"
-  );
+  ).lean();
 
   if (!hotel) {
     res.status(constants.NOT_FOUND);
@@ -306,20 +308,19 @@ const updateHotel = asyncHandler(async (req, res) => {
 
   const duplicateQueries = [];
   if (updateData.email && updateData.email !== hotel.email) {
-    duplicateQueries.push(Hotel.findOne({ _id: { $ne: req.params.id }, email: updateData.email }));
-    duplicateQueries.push(User.findOne({ email: updateData.email }));
+    duplicateQueries.push(Hotel.exists({ _id: { $ne: req.params.id }, email: updateData.email }));
+    duplicateQueries.push(User.exists({ email: updateData.email }));
   }
   if (updateData.phone && updateData.phone !== normalizePhone(hotel.phone)) {
-    duplicateQueries.push(Hotel.findOne({ _id: { $ne: req.params.id }, phone: buildPhoneRegex(updateData.phone) }));
-    duplicateQueries.push(User.findOne({ phone: buildPhoneRegex(updateData.phone) }));
+    duplicateQueries.push(Hotel.exists({ _id: { $ne: req.params.id }, phone: buildPhoneRegex(updateData.phone) }));
+    duplicateQueries.push(User.exists({ phone: buildPhoneRegex(updateData.phone) }));
   }
 
   if (duplicateQueries.length > 0) {
     const duplicates = await Promise.all(duplicateQueries);
     if (duplicates.some(Boolean)) {
-      const hasEmailDuplicate = updateData.email && duplicates.some((duplicate) => duplicate?.email === updateData.email);
       res.status(constants.VALIDATION_ERROR);
-      throw new Error(hasEmailDuplicate ? "Email already exists" : "Phone number already exists");
+      throw new Error(updateData.email ? "Email already exists" : "Phone number already exists");
     }
   }
 
@@ -327,7 +328,9 @@ const updateHotel = asyncHandler(async (req, res) => {
     req.params.id,
     updateData,
     { new: true }
-  );
+  ).lean();
+  await cache.del(cacheKeys.superAdminDashboard);
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: "Hotel updated successfully",
@@ -352,6 +355,8 @@ const deleteHotel = asyncHandler(async (req, res) => {
 
   // Also delete hotel admin users linked to this hotel
   await User.deleteMany({ hotelId: req.params.id });
+  await cache.del(cacheKeys.superAdminDashboard);
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: "Hotel deleted successfully"
@@ -378,6 +383,8 @@ const updateHotelModules = asyncHandler(async (req, res) => {
 
   hotel.modules = modules;
   await hotel.save();
+  await cache.del(cacheKeys.superAdminDashboard);
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: "Hotel modules updated successfully",
@@ -406,6 +413,8 @@ const updateHotelStatus = asyncHandler(async (req, res) => {
 
   hotel.status = status;
   await hotel.save();
+  await cache.del(cacheKeys.superAdminDashboard);
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: "Hotel status updated successfully",
@@ -434,6 +443,7 @@ const extendSubscription = asyncHandler(async (req, res) => {
 
   hotel.expiryDate = newExpiryDate;
   await hotel.save();
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: "Subscription extended successfully by 1 year",
@@ -458,6 +468,8 @@ const toggleActiveStatus = asyncHandler(async (req, res) => {
   hotel.status = hotel.isActive ? "active" : "inactive";
   
   await hotel.save();
+  await cache.del(cacheKeys.superAdminDashboard);
+  await cache.del(cacheKeys.hotel(req.params.id));
 
   res.status(200).json({
     message: `Hotel ${hotel.isActive ? "activated" : "deactivated"} successfully`,

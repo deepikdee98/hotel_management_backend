@@ -1,3 +1,5 @@
+const logger = require("../utils/logger");
+
 /**
  * Global API response time logger.
  *
@@ -15,9 +17,9 @@ const responseTime = (req, res, next) => {
       const originalUrl = req.originalUrl || req.url;
       const statusCode = res.statusCode;
 
-      console.log(`${method} ${originalUrl} - ${statusCode} - ${duration}ms`);
+      logger.info({ method, originalUrl, statusCode, duration }, "Request completed");
     } catch (error) {
-      console.error("Failed to log API response time:", error.message);
+      logger.error({ error: error.message }, "Failed to log API response time");
     }
   });
 

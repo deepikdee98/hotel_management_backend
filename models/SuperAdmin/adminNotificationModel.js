@@ -60,4 +60,10 @@ const adminNotificationSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+adminNotificationSchema.index({ createdAt: -1 });
+adminNotificationSchema.index({ publishAt: -1, expireAt: 1 });
+adminNotificationSchema.index({ type: 1, priority: 1, createdAt: -1 });
+adminNotificationSchema.index({ "audienceDetails.hotelIds": 1 });
+adminNotificationSchema.index({ "audienceDetails.moduleCodes": 1 });
+
 module.exports = mongoose.model("AdminNotification", adminNotificationSchema);

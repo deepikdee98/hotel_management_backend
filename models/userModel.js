@@ -108,5 +108,10 @@ const userSchema = mongoose.Schema(
 );
 
 userSchema.index({ hotelId: 1, username: 1 }, { unique: true });
+userSchema.index({ username: 1 });
+userSchema.index({ phone: 1 });
+userSchema.index({ role: 1, isActive: 1 });
+userSchema.index({ hotelId: 1, role: 1, isActive: 1 });
+userSchema.index({ resetOtpExpire: 1 });
 
 module.exports = mongoose.model("User", userSchema);

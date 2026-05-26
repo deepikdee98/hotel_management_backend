@@ -7,6 +7,9 @@ const HotelNotificationInbox = require("../../models/SuperAdmin/hotelNotificatio
 const Hotel = require("../../models/SuperAdmin/hotelModel");
 const { protect } = require("../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../middleware/roleMiddleware");
+const cache = require("../../utils/cache");
+const cacheKeys = require("../../utils/cacheKeys");
+const { getOffsetPagination } = require("../../utils/pagination");
 
 const resolveTargetHotels = async (payload) => {
   if (payload.audience === "selected-hotels") {
@@ -15,23 +18,50 @@ const resolveTargetHotels = async (payload) => {
 
   if (payload.audience === "module-hotels") {
     const moduleCodes = payload.audienceDetails?.moduleCodes || [];
-    const hotels = await Hotel.find({ modules: { $in: moduleCodes } }).select("_id");
+    const hotels = await Hotel.find({ modules: { $in: moduleCodes } }).select("_id").lean();
     return hotels.map((hotel) => hotel._id);
   }
 
-  const hotels = await Hotel.find({ status: { $ne: "suspended" } }).select("_id");
+  const hotels = await Hotel.find({ status: { $ne: "suspended" } }).select("_id").lean();
   return hotels.map((hotel) => hotel._id);
 };
 
 router.use(protect, authorizeRoles("superadmin"));
 
 router.get("/", asyncHandler(async (req, res) => {
-  const notifications = await AdminNotification.find().sort({ createdAt: -1 });
-  res.json({ success: true, data: { notifications } });
+  const pagination = getOffsetPagination(req.query, { limit: 20, max: 100 });
+  const cacheKey = cacheKeys.notifications(JSON.stringify({ page: pagination.page, limit: pagination.limit }));
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    res.set("X-Cache", "HIT");
+    return res.json(cached);
+  }
+
+  const [total, notifications] = await Promise.all([
+    AdminNotification.countDocuments(),
+    AdminNotification.find()
+      .sort({ createdAt: -1 })
+      .skip(pagination.skip)
+      .limit(pagination.limit)
+      .select("title message type priority audience publishAt expireAt createdAt")
+      .lean(),
+  ]);
+  const body = {
+    success: true,
+    data: {
+      notifications,
+      total,
+      page: pagination.page,
+      totalPages: Math.ceil(total / pagination.limit),
+    },
+  };
+  await cache.set(cacheKey, body, 30);
+  res.set("X-Cache", "MISS");
+  res.json(body);
 }));
 
 router.get("/:notificationId", asyncHandler(async (req, res) => {
-  const notification = await AdminNotification.findById(req.params.notificationId);
+  const notification = await AdminNotification.findById(req.params.notificationId).lean();
   if (!notification) {
     return res.status(404).json({ success: false, message: "Notification not found" });
   }
@@ -51,6 +81,7 @@ router.post("/", asyncHandler(async (req, res) => {
       { ordered: false }
     ).catch(() => null);
   }
+  await cache.delPattern("notifications:super-admin:");
 
   res.status(201).json({ success: true, data: { notification, hotelCount: hotelIds.length } });
 }));
@@ -65,6 +96,7 @@ router.patch("/:notificationId", asyncHandler(async (req, res) => {
   if (!notification) {
     return res.status(404).json({ success: false, message: "Notification not found" });
   }
+  await cache.delPattern("notifications:super-admin:");
 
   res.json({ success: true, data: notification });
 }));
@@ -77,6 +109,7 @@ router.delete("/:notificationId", asyncHandler(async (req, res) => {
 
   await HotelNotificationInbox.deleteMany({ notificationId: notification._id });
   await notification.deleteOne();
+  await cache.delPattern("notifications:super-admin:");
   res.json({ success: true, message: "Notification deleted" });
 }));
 

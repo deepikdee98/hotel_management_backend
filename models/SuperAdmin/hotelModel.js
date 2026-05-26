@@ -107,4 +107,11 @@ const hotelSchema = mongoose.Schema(
   { timestamps: true }
 );
 
+hotelSchema.index({ status: 1, createdAt: -1 });
+hotelSchema.index({ isActive: 1 });
+hotelSchema.index({ modules: 1 });
+hotelSchema.index({ createdAt: -1 });
+hotelSchema.index({ city: 1, country: 1 });
+hotelSchema.index({ name: "text", city: "text", country: "text", email: "text" });
+
 module.exports = mongoose.model("Hotel", hotelSchema);

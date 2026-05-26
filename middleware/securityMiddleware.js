@@ -1,40 +1,5 @@
 const helmet = require("helmet");
-const rateLimit = require("express-rate-limit");
-
-const isProduction = process.env.NODE_ENV === "production";
-
-/**
- * General API Rate Limiter
- */
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isProduction ? 300 : 1000,
-
-  standardHeaders: true,
-  legacyHeaders: false,
-
-  message: {
-    success: false,
-    message: "Too many requests from this IP, please try again later.",
-  },
-});
-
-/**
- * Auth Rate Limiter (Login/Register)
- */
-const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, // 1 hour
-  max: 20,
-
-  standardHeaders: true,
-  legacyHeaders: false,
-
-  message: {
-    success: false,
-    message:
-      "Too many authentication attempts. Please try again after 1 hour.",
-  },
-});
+const { env } = require("../config/env");
 
 /**
  * Helmet Security Headers
@@ -51,14 +16,14 @@ const securityHeaders = helmet({
        * JavaScript Sources
        * In development allow inline scripts for easier debugging
        */
-      scriptSrc: isProduction
+      scriptSrc: env.isProduction
         ? ["'self'"]
         : ["'self'", "'unsafe-inline'"],
 
       /**
        * CSS Sources
        */
-      styleSrc: isProduction
+      styleSrc: env.isProduction
         ? ["'self'"]
         : ["'self'", "'unsafe-inline'"],
 
@@ -96,7 +61,7 @@ const securityHeaders = helmet({
       /**
        * Upgrade HTTP requests to HTTPS in production
        */
-      upgradeInsecureRequests: isProduction ? [] : null,
+      upgradeInsecureRequests: env.isProduction ? [] : null,
     },
   },
 
@@ -136,7 +101,7 @@ const securityHeaders = helmet({
   /**
    * HSTS - Force HTTPS in production
    */
-  hsts: isProduction
+  hsts: env.isProduction
     ? {
         maxAge: 31536000, // 1 year
         includeSubDomains: true,
@@ -146,7 +111,5 @@ const securityHeaders = helmet({
 });
 
 module.exports = {
-  apiLimiter,
-  authLimiter,
   securityHeaders,
 };

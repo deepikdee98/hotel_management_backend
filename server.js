@@ -1,5 +1,6 @@
 const express = require("express");
 const dotenv = require("dotenv").config();
+const http = require("http");
 if (dotenv.error) {
   console.error("Error loading .env file:", dotenv.error);
 } else {
@@ -11,26 +12,43 @@ if (dotenv.error) {
 
 const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
+const mongoose = require("mongoose");
 const connectDb = require("./config/dbConnection");
 const swaggerSpec = require("./config/swagger");
 const errorHandler = require("./middleware/errorHandler");
 const responseTime = require("./middleware/responseTime");
 const { startNightAuditJob } = require("./jobs/nightAudit");
 const { startRoomBlockExpiryJob } = require("./jobs/roomBlockExpiry");
-const { apiLimiter, securityHeaders } = require("./middleware/securityMiddleware");
+const { securityHeaders } = require("./middleware/securityMiddleware");
+const { env, validateEnv } = require("./config/env");
+const logger = require("./utils/logger");
+const cache = require("./utils/cache");
+const httpLogger = require("./middleware/httpLogger");
+const { requestTimeout, sanitizeRequest } = require("./middleware/requestGuards");
+const { apiRateLimiter } = require("./middleware/rateLimiter");
 
+let compression = null;
+try {
+  compression = require("compression");
+} catch (error) {
+  logger.warn("compression package not installed; response compression disabled");
+}
+
+validateEnv();
 connectDb();
+cache.connect();
 
 const app = express();
-const port = process.env.PORT || 5000;
+const port = env.port;
+app.set("trust proxy", env.trustProxy);
 
-const configuredOrigins = (process.env.CORS_ORIGINS || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+const configuredOrigins = env.corsOrigins;
 
 const localhostPatterns = [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
 
+app.use(requestTimeout);
+app.use(httpLogger);
+app.use(require("./routes/healthRoutes"));
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -42,7 +60,7 @@ app.use(
       const isConfigured = configuredOrigins.includes(origin);
       const isLocalhost = localhostPatterns.some((pattern) => pattern.test(origin));
 
-      if (isConfigured || isLocalhost) {
+      if (isConfigured || (!env.isProduction && isLocalhost)) {
         return callback(null, true);
       }
 
@@ -59,8 +77,13 @@ app.use(
 app.use(responseTime);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(securityHeaders);
-app.use(apiLimiter);
-app.use(express.json());
+if (compression) {
+  app.use(compression({ threshold: 1024 }));
+}
+app.use(apiRateLimiter);
+app.use(express.json({ limit: env.bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: env.bodyLimit }));
+app.use(sanitizeRequest);
 
 // Routes
 app.use("/auth", require("./routes/authRoute"));
@@ -83,9 +106,45 @@ app.use("/api/referrals", require("./routes/referralRoutes"));
 
 app.use(errorHandler);
 
-startNightAuditJob();
-startRoomBlockExpiryJob();
+const shouldRunCronJobs =
+  env.runCronJobs &&
+  (process.env.NODE_APP_INSTANCE === undefined || process.env.NODE_APP_INSTANCE === "0");
 
-app.listen(port,"0.0.0.0", () => {
-  console.log(`Server running on port ${port}`);
+if (shouldRunCronJobs) {
+  startNightAuditJob();
+  startRoomBlockExpiryJob();
+} else {
+  logger.info({ nodeAppInstance: process.env.NODE_APP_INSTANCE }, "Cron jobs disabled for this API process");
+}
+
+const server = http.createServer(app);
+
+server.keepAliveTimeout = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS) || 65000;
+server.headersTimeout = Number(process.env.SERVER_HEADERS_TIMEOUT_MS) || 66000;
+
+server.listen(port,"0.0.0.0", () => {
+  logger.info({ port, pid: process.pid }, "Server running");
 });
+
+const shutdown = async (signal) => {
+  logger.info({ signal }, "Graceful shutdown started");
+  server.close(async () => {
+    try {
+      await cache.close();
+      await mongoose.connection.close(false);
+      logger.info("Graceful shutdown complete");
+      process.exit(0);
+    } catch (error) {
+      logger.error({ error: error.message }, "Graceful shutdown failed");
+      process.exit(1);
+    }
+  });
+
+  setTimeout(() => {
+    logger.error("Forced shutdown after timeout");
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
