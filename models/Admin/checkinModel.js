@@ -39,6 +39,12 @@ const checkinSchema = new mongoose.Schema({
   registerNo: String,
   idProofType: String,
   idProofNumber: String,
+  guestPhotoUrl: String,
+  guestPhotoKey: String,
+  idProofFrontUrl: String,
+  idProofFrontKey: String,
+  idProofBackUrl: String,
+  idProofBackKey: String,
   address: String,
 
   country: String,

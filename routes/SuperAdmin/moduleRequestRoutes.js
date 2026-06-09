@@ -78,7 +78,7 @@ router.patch("/:requestId/approve", asyncHandler(async (req, res) => {
       disabledAt: null,
       notes: request.adminNotes,
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   await syncHotelModules(request.hotelId);
@@ -98,7 +98,7 @@ router.patch("/:requestId/approve", asyncHandler(async (req, res) => {
   await HotelNotificationInbox.findOneAndUpdate(
     { hotelId: request.hotelId, notificationId: notification._id },
     { hotelId: request.hotelId, notificationId: notification._id },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   res.json({ success: true, data: { request, subscription, notification } });
@@ -135,7 +135,7 @@ router.patch("/:requestId/reject", asyncHandler(async (req, res) => {
   await HotelNotificationInbox.findOneAndUpdate(
     { hotelId: request.hotelId, notificationId: notification._id },
     { hotelId: request.hotelId, notificationId: notification._id },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   res.json({ success: true, data: { request, notification } });

@@ -86,7 +86,7 @@ const updateService = async (req, res) => {
         remark,
         gstInclusive,
       },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!data) {

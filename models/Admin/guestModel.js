@@ -17,6 +17,9 @@ const guestSchema = new mongoose.Schema({
       trim: true,
     },
 
+    guestPhotoUrl: String,
+    guestPhotoKey: String,
+
     email: String,
     phone: String,
     title: String,

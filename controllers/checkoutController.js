@@ -1,5 +1,3 @@
-const fs = require("fs");
-const path = require("path");
 const mongoose = require("mongoose");
 const Folio = require("../models/Admin/folioModel");
 const Checkin = require("../models/Admin/checkinModel");
@@ -14,6 +12,7 @@ const HousekeepingTask = require("../models/Admin/housekeepingTaskModel");
 const AuditLog = require("../models/AuditLog");
 const { calculateGSTBreakdown } = require("../utils/gstCalculator");
 const { generateCheckoutInvoicePdf } = require("../utils/invoiceGenerator");
+const { createS3ReadTarget, uploadInvoiceToS3 } = require("../services/s3UploadService");
 
 const ALLOWED_PAYMENT_MODES = new Set(["cash", "upi", "card"]);
 const ALLOWED_ROOM_STATUS = new Set(["dirty", "clean"]);
@@ -452,6 +451,16 @@ exports.completeCheckout = async (req, res) => {
             ? "Pending to Company"
             : `Collected Rs ${toNum(totalPaid).toFixed(2)} via ${normalizedBillingType === "split" ? "multiple modes" : paymentRecords[0].mode.toUpperCase()}`,
         });
+        const invoiceUpload = await uploadInvoiceToS3(
+          pdfInfo.buffer,
+          hotelId,
+          invoiceNumber,
+          req.user._id,
+          {
+            hotelName: req.user.hotelName,
+            customerName: checkin.guestName || "customer-NA",
+          }
+        );
 
         const [invoiceDoc] = await Invoice.create(
           [
@@ -472,7 +481,9 @@ exports.completeCheckout = async (req, res) => {
               grandTotal: adjustedTotalAmount,
               amountPaid: Math.min(adjustedTotalAmount, advancePaid + totalPaid),
               balanceDue: Math.max(0, adjustedTotalAmount - advancePaid - totalPaid),
-              pdfPath: pdfInfo.relativePath,
+              invoiceUrl: invoiceUpload.fileUrl,
+              invoiceKey: invoiceUpload.key,
+              generatedAt: invoiceUpload.uploadedAt,
               notes: invoice.email ? "Email invoice requested" : "",
               sentMeta: {
                 emailRequested: !!invoice.email,
@@ -511,6 +522,16 @@ exports.completeCheckout = async (req, res) => {
             paymentSummary: "Separate companion folio created. Companion-specific charges can be settled independently.",
             notes: `Main Guest: ${checkin.guestName || "N/A"}`,
           });
+          const companionInvoiceUpload = await uploadInvoiceToS3(
+            companionPdfInfo.buffer,
+            hotelId,
+            companionInvoiceNumber,
+            req.user._id,
+            {
+              hotelName: req.user.hotelName,
+              customerName: companion.name || "Companion",
+            }
+          );
 
           const [companionInvoiceDoc] = await Invoice.create(
             [
@@ -533,7 +554,9 @@ exports.completeCheckout = async (req, res) => {
                 grandTotal: 0,
                 amountPaid: 0,
                 balanceDue: 0,
-                pdfPath: companionPdfInfo.relativePath,
+                invoiceUrl: companionInvoiceUpload.fileUrl,
+                invoiceKey: companionInvoiceUpload.key,
+                generatedAt: companionInvoiceUpload.uploadedAt,
                 status: "paid",
                 notes: `Separate bill for companion. Main Guest: ${checkin.guestName || "N/A"}`,
                 sentMeta: {
@@ -581,7 +604,7 @@ exports.completeCheckout = async (req, res) => {
             {
               ...writeOptions,
               upsert: true,
-              new: true,
+              returnDocument: "after",
               setDefaultsOnInsert: true,
             }
           );
@@ -699,21 +722,45 @@ exports.completeCheckout = async (req, res) => {
 
 exports.downloadCheckoutInvoice = async (req, res) => {
   try {
-    const invoice = await Invoice.findOne({ _id: req.params.invoiceId, hotelId: req.user.hotelId });
+    const invoiceId = req.params.invoiceId || req.params.id;
+    const invoice = await Invoice.findOne({ _id: invoiceId, hotelId: req.user.hotelId });
     if (!invoice) {
       return res.status(404).json({ success: false, message: "Invoice not found" });
     }
 
-    if (!invoice.pdfPath) {
+    if (!invoice.invoiceKey && !invoice.invoiceUrl) {
       return res.status(404).json({ success: false, message: "Invoice PDF not generated" });
     }
 
-    const absolutePath = path.join(process.cwd(), invoice.pdfPath);
-    if (!fs.existsSync(absolutePath)) {
-      return res.status(404).json({ success: false, message: "Invoice file missing" });
+    if (invoice.invoiceKey) {
+      const target = createS3ReadTarget({
+        hotelId: req.user.hotelId,
+        hotelName: req.user.hotelName,
+        key: invoice.invoiceKey,
+      });
+
+      return res.json({
+        success: true,
+        data: {
+          invoiceId: invoice._id,
+          invoiceNumber: invoice.invoiceNumber,
+          invoiceUrl: invoice.invoiceUrl,
+          downloadUrl: target.readUrl,
+          key: invoice.invoiceKey,
+          expiresIn: target.expiresIn,
+        },
+      });
     }
 
-    return res.download(absolutePath, `${invoice.invoiceNumber}.pdf`);
+    return res.json({
+      success: true,
+      data: {
+        invoiceId: invoice._id,
+        invoiceNumber: invoice.invoiceNumber,
+        invoiceUrl: invoice.invoiceUrl,
+        downloadUrl: invoice.invoiceUrl,
+      },
+    });
   } catch (error) {
     console.error("downloadCheckoutInvoice failed:", error);
     return res.status(500).json({ success: false, message: "Failed to download invoice" });

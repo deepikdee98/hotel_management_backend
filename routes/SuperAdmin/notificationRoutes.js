@@ -90,7 +90,7 @@ router.patch("/:notificationId", asyncHandler(async (req, res) => {
   const notification = await AdminNotification.findByIdAndUpdate(
     req.params.notificationId,
     req.body,
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!notification) {

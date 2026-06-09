@@ -60,7 +60,9 @@ const createReservation = async (req, res) => {
       bookingSource,
       advanceAmount,
       paymentMode,
-      totalAmount
+      totalAmount,
+      guestPhotoUrl,
+      guestPhotoKey
     } = req.body;
 
     if (
@@ -136,7 +138,9 @@ const createReservation = async (req, res) => {
       bookingSource,
       advanceAmount,
       paymentMode,
-      totalAmount
+      totalAmount,
+      guestPhotoUrl,
+      guestPhotoKey
     });
 
     await Room.findOneAndUpdate({ _id: roomDetails._id, hotelId: req.user.hotelId }, {
@@ -228,7 +232,7 @@ const updateReservation = async (req, res) => {
   try {
     const updated = await Reservation.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     res.json({

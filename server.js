@@ -1,6 +1,7 @@
 const express = require("express");
 const dotenv = require("dotenv").config();
 const http = require("http");
+
 if (dotenv.error) {
   console.error("Error loading .env file:", dotenv.error);
 } else {
@@ -10,7 +11,6 @@ if (dotenv.error) {
   }
 }
 
-const cors = require("cors");
 const swaggerUi = require("swagger-ui-express");
 const mongoose = require("mongoose");
 const connectDb = require("./config/dbConnection");
@@ -40,46 +40,36 @@ cache.connect();
 
 const app = express();
 const port = env.port;
+
 app.set("trust proxy", env.trustProxy);
 
-const configuredOrigins = env.corsOrigins;
+// CORS FIX - must be before all routes/middlewares
+app.use((req, res, next) => {
+  // res.setHeader("Access-Control-Allow-Origin", "https://staging.zentrictechnology.com,http://localhost:3000");
+  res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
-const localhostPatterns = [/^http:\/\/localhost:\d+$/, /^http:\/\/127\.0\.0\.1:\d+$/];
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  next();
+});
 
 app.use(requestTimeout);
 app.use(httpLogger);
 app.use(require("./routes/healthRoutes"));
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow non-browser tools like Postman/curl.
-      if (!origin) {
-        return callback(null, true);
-      }
-
-      const isConfigured = configuredOrigins.includes(origin);
-      const isLocalhost = localhostPatterns.some((pattern) => pattern.test(origin));
-
-      if (isConfigured || (!env.isProduction && isLocalhost)) {
-        return callback(null, true);
-      }
-
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-      preflightContinue: false,
-      optionsSuccessStatus: 204,
-  })
-);
 
 app.use(responseTime);
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 app.use(securityHeaders);
+
 if (compression) {
   app.use(compression({ threshold: 1024 }));
 }
+
 app.use(apiRateLimiter);
 app.use(express.json({ limit: env.bodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: env.bodyLimit }));
@@ -87,7 +77,7 @@ app.use(sanitizeRequest);
 
 // Routes
 app.use("/auth", require("./routes/authRoute"));
-app.use("/super-admin",require("./routes/SuperAdmin"))
+app.use("/super-admin", require("./routes/SuperAdmin"));
 app.use("/admin", require("./routes/Admin"));
 app.use("/staff", require("./routes/Staff"));
 app.use("/guest", require("./routes/guestRoutes"));
@@ -122,12 +112,13 @@ const server = http.createServer(app);
 server.keepAliveTimeout = Number(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS) || 65000;
 server.headersTimeout = Number(process.env.SERVER_HEADERS_TIMEOUT_MS) || 66000;
 
-server.listen(port,"0.0.0.0", () => {
+server.listen(port, "0.0.0.0", () => {
   logger.info({ port, pid: process.pid }, "Server running");
 });
 
 const shutdown = async (signal) => {
   logger.info({ signal }, "Graceful shutdown started");
+
   server.close(async () => {
     try {
       await cache.close();

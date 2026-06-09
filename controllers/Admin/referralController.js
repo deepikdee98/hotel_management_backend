@@ -80,7 +80,7 @@ const updateReferral = async (req, res) => {
     const referral = await Referral.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!referral) {
@@ -102,7 +102,7 @@ const deleteReferral = async (req, res) => {
     const referral = await Referral.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       { isActive: false },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!referral) {

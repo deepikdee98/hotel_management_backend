@@ -53,7 +53,7 @@ router.patch("/rooms/:roomId/status", asyncHandler(async (req, res) => {
   const room = await Room.findOneAndUpdate(
     { _id: req.params.roomId, hotelId: req.user.hotelId },
     payload,
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!room) {

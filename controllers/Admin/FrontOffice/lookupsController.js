@@ -88,6 +88,7 @@ const getGuestLookup = async (req, res) => {
       reservationId: resv.reservationId,
       bookingNumber: resv.bookingNumber || resv.reservationId,
       guestName: resv.guestName,
+      guestPhotoUrl: resv.guestPhotoUrl,
       phone: resv.phone,
       email: resv.email,
 

@@ -5,6 +5,7 @@ const {
   normalizeType,
   requireTenant,
   getBusinessId,
+  nextSequenceNumber,
   paginate,
   postLedgerEntry,
   audit,
@@ -30,7 +31,14 @@ exports.createTransaction = asyncHandler(async (req, res) => {
 
   const hotelId = requireTenant(req);
   const businessId = getBusinessId(req);
-  const tx = await AccountsTransaction.create({ ...req.body, hotelId, businessId, type: normalizeType(req.body.type), createdBy: req.user._id });
+  const tx = await AccountsTransaction.create({
+    ...req.body,
+    hotelId,
+    businessId,
+    transactionNumber: req.body.transactionNumber || await nextSequenceNumber(hotelId, "TXN", "TXN-", 3),
+    type: normalizeType(req.body.type),
+    createdBy: req.user._id,
+  });
 
   await postLedgerEntry({
     hotelId,

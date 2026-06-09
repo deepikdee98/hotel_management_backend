@@ -8,13 +8,14 @@ const cache = require("../../utils/cache");
 const cacheKeys = require("../../utils/cacheKeys");
 const { getOffsetPagination } = require("../../utils/pagination");
 const { env } = require("../../config/env");
+const { seedDefaultMasterData } = require("../../services/defaultMasterDataService");
 
 let bcrypt;
 try {
   bcrypt = require("bcrypt");
 } catch (error) {
   bcrypt = require("bcryptjs");
-}
+} 
 
 const usernameRegex = /^[a-zA-Z0-9_]+$/;
 const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -174,27 +175,26 @@ const createHotel = asyncHandler(async (req, res) => {
     avatar: avatar || ""
   });
 
-  let accountEmail = { sent: false };
-  try {
-    accountEmail = await sendHotelAccountEmail({
+  // Parallelize seeding and email sending for performance
+  const [masterDataSeed, emailResult] = await Promise.all([
+    seedDefaultMasterData(hotel._id),
+    sendHotelAccountEmail({
       to: cleanEmail,
       hotelName: name,
       username: cleanAdminUsername,
       password: adminPassword,
-    });
-  } catch (error) {
-    accountEmail = {
-      sent: false,
-      reason: error.message || "Failed to send account email",
-    };
-    console.error("Failed to send hotel account email:", error);
-  }
+    }).catch(error => {
+      console.error("Failed to send hotel account email:", error);
+      return { sent: false, reason: error.message || "Failed to send account email" };
+    })
+  ]);
 
   res.status(201).json({
     message: "Hotel and Hotel Admin created successfully",
     hotel,
     hotelAdmin,
-    accountEmail,
+    masterDataSeed,
+    accountEmail: emailResult,
   });
   await cache.del(cacheKeys.superAdminDashboard);
 
@@ -228,7 +228,7 @@ const getAllHotels = asyncHandler(async (req, res) => {
   const [total, hotels] = await Promise.all([
     Hotel.countDocuments(filter),
     Hotel.find(filter)
-    .select("name email phone city country totalRooms modules status isActive expiryDate createdBy createdAt")
+    .select("name email phone address city country totalRooms modules status isActive expiryDate createdBy createdAt")
     .populate("createdBy", "username email")
     .sort({ createdAt: -1 })
     .skip(pagination.skip)
@@ -327,7 +327,7 @@ const updateHotel = asyncHandler(async (req, res) => {
   const updatedHotel = await Hotel.findByIdAndUpdate(
     req.params.id,
     updateData,
-    { new: true }
+    { returnDocument: "after" }
   ).lean();
   await cache.del(cacheKeys.superAdminDashboard);
   await cache.del(cacheKeys.hotel(req.params.id));

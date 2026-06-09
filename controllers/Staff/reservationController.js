@@ -50,6 +50,7 @@ exports.getStaffReservations = async (req, res) => {
       bookingNumber: r.bookingNumber || r.reservationId,
       reservationId: r.reservationId,
       guestName: r.guestName,
+      guestPhotoUrl: r.guestPhotoUrl,
       room: r.room?.roomNumber,
       checkIn: r.checkInDate,
       checkOut: r.checkOutDate,

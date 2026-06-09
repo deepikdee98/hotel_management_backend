@@ -57,6 +57,9 @@ const invoiceSchema = new mongoose.Schema(
     termsAndConditions: String,
     sent: { type: Boolean, default: false },
     sentMeta: { type: Object, default: {} },
+    invoiceUrl: { type: String, default: "" },
+    invoiceKey: { type: String, default: "" },
+    generatedAt: { type: Date, default: null },
     pdfPath: { type: String, default: "" },
     status: {
       type: String,

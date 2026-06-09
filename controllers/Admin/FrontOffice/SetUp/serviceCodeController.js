@@ -77,7 +77,7 @@ const updateServiceCode = async (req, res) => {
 
     const updated = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updates,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updated) {
@@ -102,7 +102,7 @@ const deleteServiceCode = async (req, res) => {
   try {
     const service = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status: "inactive" },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!service) {
@@ -134,7 +134,7 @@ const updateServiceCodeStatus = async (req, res) => {
 
     const service = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!service) {

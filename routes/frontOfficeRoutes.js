@@ -712,7 +712,7 @@ router.patch("/rooms/:roomId/status", asyncHandler(async (req, res) => {
   const room = await Room.findOneAndUpdate(
     { _id: req.params.roomId, hotelId: req.user.hotelId },
     { status },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!room) {
@@ -806,6 +806,7 @@ router.get("/in-house", asyncHandler(async (req, res) => {
     roomNumber: item.roomNumber?.roomNumber,
     roomId: item.roomNumber?._id,
     guestName: item.guestName,
+    guestPhotoUrl: item.guestPhotoUrl,
     checkInDate: item.checkInDate,
     checkOutDate: new Date(new Date(item.checkInDate).getTime() + (item.nights || 0) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     nights: item.nights || 0,
@@ -1094,7 +1095,7 @@ router.post("/in-house/link-rooms", asyncHandler(async (req, res) => {
         linkedFolioIds: { $each: linkedFolioIds }
       }
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   res.status(201).json({ success: true, data: link });
@@ -1318,7 +1319,7 @@ router.patch("/complaints/:complaintId", asyncHandler(async (req, res) => {
     compensationProvided: req.body.compensationProvided,
   };
 
-  const complaint = await Complaint.findByIdAndUpdate(req.params.complaintId, payload, { new: true });
+  const complaint = await Complaint.findByIdAndUpdate(req.params.complaintId, payload, { returnDocument: "after" });
   if (!complaint) {
     return res.status(404).json({ success: false, message: "Complaint not found" });
   }

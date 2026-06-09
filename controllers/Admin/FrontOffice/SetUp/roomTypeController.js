@@ -133,7 +133,7 @@ const updateRoomType = async (req, res) => {
 
     const updated = await RoomType.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updateData,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     res.json(updated);
@@ -196,7 +196,7 @@ const updateRoomTypeStatus = async (req, res) => {
 
     const roomType = await RoomType.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!roomType) {

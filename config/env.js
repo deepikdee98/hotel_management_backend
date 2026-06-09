@@ -38,6 +38,14 @@ const env = {
   apiRateLimitMax: toNumber(process.env.API_RATE_LIMIT_MAX, 1000),
   authRateLimitWindowMs: toNumber(process.env.AUTH_RATE_LIMIT_WINDOW_MS, 15 * 60 * 1000),
   authRateLimitMax: toNumber(process.env.AUTH_RATE_LIMIT_MAX, 50),
+  awsAccessKeyId: process.env.AWS_ACCESS_KEY_ID,
+  awsSecretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  awsSessionToken: process.env.AWS_SESSION_TOKEN,
+  awsRegion: process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || "ap-south-1",
+  s3Bucket: process.env.AWS_S3_BUCKET,
+  s3PublicUrl: process.env.AWS_S3_PUBLIC_URL,
+  s3UploadUrlExpiresSeconds: toNumber(process.env.AWS_S3_UPLOAD_URL_EXPIRES_SECONDS, 300),
+  s3MaxFileSizeBytes: toNumber(process.env.AWS_S3_MAX_FILE_SIZE_BYTES, 10 * 1024 * 1024),
 };
 
 env.isProduction = env.nodeEnv === "production";
