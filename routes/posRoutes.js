@@ -30,7 +30,7 @@ router.route("/items/:id")
     const item = await PosItem.findOneAndUpdate(
       { _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!item) {
       return res.status(404).json({ success: false, message: "Item not found" });
@@ -133,7 +133,7 @@ router.patch("/orders/:id/status", asyncHandler(async (req, res) => {
   const order = await PosOrder.findOneAndUpdate(
     { _id: req.params.id, hotelId: req.user.hotelId },
     { status: req.body.status },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!order) {

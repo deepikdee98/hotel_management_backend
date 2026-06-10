@@ -9,6 +9,6 @@ exports.getSettings = asyncHandler(async (req, res) => {
 });
 
 exports.updateSettings = asyncHandler(async (req, res) => {
-  const settings = await AccountSettings.findOneAndUpdate({ hotelId: requireTenant(req) }, req.body, { new: true, upsert: true });
+  const settings = await AccountSettings.findOneAndUpdate({ hotelId: requireTenant(req) }, req.body, { returnDocument: "after", upsert: true });
   res.json({ success: true, data: settings });
 });

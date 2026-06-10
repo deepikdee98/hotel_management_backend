@@ -20,7 +20,25 @@ const ratePlanSchema = mongoose.Schema(
   },
 
   description: {
-    type: String
+    type: String,
+    default: ""
+  },
+
+  foodIncluded: {
+    type: Boolean,
+    default: false
+  },
+
+  mealType: {
+    type: String,
+    trim: true,
+    default: ""
+  },
+
+  foodCharge: {
+    type: Number,
+    default: 0,
+    min: 0
   },
 
   status: {

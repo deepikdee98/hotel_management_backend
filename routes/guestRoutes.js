@@ -29,6 +29,8 @@ const formatGuest = (guest) => ({
   referredName: guest.referredName || "",
   idProofType: guest.idType || "",
   idProofNumber: guest.idNumber || "",
+  guestPhotoUrl: guest.guestPhotoUrl || "",
+  guestPhotoKey: guest.guestPhotoKey || "",
 });
 
 router.use(protect, authorizeRoles("hoteladmin", "staff", "superadmin"));
@@ -65,12 +67,14 @@ router.get("/by-mobile", asyncHandler(async (req, res) => {
             referredName: checkin.referredName || "",
             idType: "other",
             idNumber: checkin.idProofNumber || "",
+            guestPhotoUrl: checkin.guestPhotoUrl || "",
+            guestPhotoKey: checkin.guestPhotoKey || "",
           },
           $setOnInsert: {
             visits: 0,
           },
         },
-        { upsert: true, new: true }
+        { upsert: true, returnDocument: "after" }
       );
     }
   }

@@ -53,7 +53,7 @@ router.patch("/:notificationId/read", asyncHandler(async (req, res) => {
   const inboxItem = await HotelNotificationInbox.findOneAndUpdate(
     { hotelId: req.user.hotelId, notificationId: req.params.notificationId },
     { isRead: true, readAt: new Date() },
-    { new: true }
+    { returnDocument: "after" }
   ).populate("notificationId");
 
   if (!inboxItem) {
@@ -67,7 +67,7 @@ router.patch("/:notificationId/archive", asyncHandler(async (req, res) => {
   const inboxItem = await HotelNotificationInbox.findOneAndUpdate(
     { hotelId: req.user.hotelId, notificationId: req.params.notificationId },
     { archived: true },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!inboxItem) {

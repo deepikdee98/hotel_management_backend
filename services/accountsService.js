@@ -22,7 +22,7 @@ const normalizeType = (value) => {
 
 function getHotelId(req) {
   if (req.user?.role === "superadmin") {
-    return req.query.hotelId || req.body.hotelId || req.user.hotelId;
+    return req.query?.hotelId || req.body?.hotelId || req.user.hotelId;
   }
   return req.user?.hotelId;
 }
@@ -37,7 +37,7 @@ function requireTenant(req) {
   return hotelId;
 }
 
-const getBusinessId = (req) => String(req.query.businessId || req.body.businessId || req.user?.businessId || "");
+const getBusinessId = (req) => String(req.query?.businessId || req.body?.businessId || req.user?.businessId || "");
 
 function dateRangeFilter(query, field = "date") {
   const filter = {};
@@ -86,9 +86,18 @@ async function nextNumber(hotelId, prefix) {
   const counter = await Counter.findOneAndUpdate(
     { hotelId, date: key },
     { $inc: { seq: 1 } },
-    { new: true, upsert: true }
+    { returnDocument: "after", upsert: true }
   );
   return `${prefix}${String(counter.seq).padStart(5, "0")}`;
+}
+
+async function nextSequenceNumber(hotelId, key, prefix, width = 3) {
+  const counter = await Counter.findOneAndUpdate(
+    { hotelId, date: key },
+    { $inc: { seq: 1 } },
+    { returnDocument: "after", upsert: true }
+  );
+  return `${prefix}${String(counter.seq).padStart(width, "0")}`;
 }
 
 function calculateInvoiceTotals(payload) {
@@ -200,7 +209,7 @@ async function getSettings(hotelId) {
         ],
       },
     },
-    { new: true, upsert: true }
+    { returnDocument: "after", upsert: true }
   );
 }
 
@@ -232,6 +241,7 @@ module.exports = {
   dateRangeFilter,
   paginate,
   nextNumber,
+  nextSequenceNumber,
   calculateInvoiceTotals,
   invoiceStatus,
   ensureChartOfAccounts,

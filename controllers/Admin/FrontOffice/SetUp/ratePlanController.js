@@ -1,5 +1,19 @@
 const RatePlan = require("../../../../models/Admin/ratePlanModel");
 
+const buildRatePlanPayload = (body) => {
+  const foodIncluded = Boolean(body.foodIncluded);
+
+  return {
+    name: body.name,
+    code: body.code,
+    description: body.description || "",
+    foodIncluded,
+    mealType: foodIncluded ? String(body.mealType || "").trim() : "",
+    foodCharge: foodIncluded ? Math.max(0, Number(body.foodCharge) || 0) : 0,
+    status: body.status || "active",
+  };
+};
+
 
 // @desc    Get Rate Plans
 // @route   GET /admin/setup/rate-plans
@@ -28,17 +42,23 @@ const getRatePlans = async (req, res) => {
 const createRatePlan = async (req, res) => {
   try {
 
-    const { name, code, description, status } = req.body;
+    const { name, code, foodIncluded, mealType, foodCharge, status } = req.body;
 
-    if (!name || !code || !description) {
+    if (!name || !code) {
       return res.status(400).json({
-        message: "Name, code, description and amount are required"
+        message: "Name and code are required"
       });
     }
 
     if (status && !["active", "inactive"].includes(status)) {
       return res.status(400).json({
         message: "Invalid status value"
+      });
+    }
+
+    if (foodIncluded && (!mealType || Number(foodCharge) < 0)) {
+      return res.status(400).json({
+        message: "Meal type and valid food charge are required when food is included"
       });
     }
 
@@ -51,10 +71,7 @@ const createRatePlan = async (req, res) => {
     }
 
     const ratePlan = await RatePlan.create({
-      name,
-      code,
-      description,
-      status: status || "active",
+      ...buildRatePlanPayload(req.body),
       hotelId: req.user.hotelId
     });
 
@@ -79,7 +96,7 @@ const createRatePlan = async (req, res) => {
 // @access  Private (Hotel Admin)
 const updateRatePlan = async (req, res) => {
   try {
-    const { status } = req.body;
+    const { status, foodIncluded, mealType, foodCharge } = req.body;
 
     if (status && !["active", "inactive"].includes(status)) {
       return res.status(400).json({
@@ -87,9 +104,15 @@ const updateRatePlan = async (req, res) => {
       });
     }
 
+    if (foodIncluded && (!mealType || Number(foodCharge) < 0)) {
+      return res.status(400).json({
+        message: "Meal type and valid food charge are required when food is included"
+      });
+    }
+
     const updated = await RatePlan.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
-      req.body,
-      { new: true }
+      buildRatePlanPayload(req.body),
+      { returnDocument: "after" }
     );
 
     if (!updated) {
@@ -156,7 +179,7 @@ const updateRatePlanStatus = async (req, res) => {
 
     const ratePlan = await RatePlan.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!ratePlan) {

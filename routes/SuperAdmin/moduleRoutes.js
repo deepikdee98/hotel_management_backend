@@ -37,7 +37,7 @@ router.put("/:moduleId", asyncHandler(async (req, res) => {
   const moduleDoc = await ModuleCatalog.findByIdAndUpdate(
     req.params.moduleId,
     { ...req.body, updatedBy: req.user._id },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!moduleDoc) {
@@ -51,7 +51,7 @@ router.patch("/:moduleId/status", asyncHandler(async (req, res) => {
   const moduleDoc = await ModuleCatalog.findByIdAndUpdate(
     req.params.moduleId,
     { isActive: !!req.body.isActive, updatedBy: req.user._id },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!moduleDoc) {
@@ -84,7 +84,7 @@ router.patch("/hotels/:hotelId/:moduleCode/enable", asyncHandler(async (req, res
       disabledAt: null,
       notes: req.body.notes || "",
     },
-    { upsert: true, new: true }
+    { upsert: true, returnDocument: "after" }
   );
 
   const modules = await syncHotelModules(req.params.hotelId);
@@ -106,7 +106,7 @@ router.patch("/hotels/:hotelId/:moduleCode/disable", asyncHandler(async (req, re
       disabledAt: new Date(),
       notes: req.body.notes || "",
     },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!subscription) {

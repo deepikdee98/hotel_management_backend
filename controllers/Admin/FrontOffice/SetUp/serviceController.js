@@ -67,7 +67,7 @@ const updateService = async (req, res) => {
 
     const updated = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updates,
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updated) {
@@ -84,7 +84,7 @@ const deleteService = async (req, res) => {
   try {
     const updated = await Service.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { status: "inactive" },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!updated) {

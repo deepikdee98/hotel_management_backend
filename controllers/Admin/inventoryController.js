@@ -49,7 +49,7 @@ const updateInventoryItem = asyncHandler(async (req, res) => {
 
   const updatedItem = await Inventory.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
     { ...req.body, lastUpdatedBy: req.user._id },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   res.json({ success: true, data: updatedItem });

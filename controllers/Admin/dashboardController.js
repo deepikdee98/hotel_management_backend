@@ -84,6 +84,7 @@ const getDashboard = async (req, res) => {
     const formattedReservations = recentReservations.map((r) => ({
       id: r._id,
       guestName: r.guestName,
+      guestPhotoUrl: r.guestPhotoUrl,
       room: r.room?.roomNumber,
       checkIn: r.checkIn,
       checkOut: r.checkOut,
