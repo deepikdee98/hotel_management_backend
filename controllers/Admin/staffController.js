@@ -299,7 +299,7 @@ const updateStaff = async (req, res) => {
 
     const updated = await User.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updateData,
-      { new: true }
+      { returnDocument: "after" }
     ).select("-password");
 
     res.json({
@@ -333,7 +333,7 @@ const updateStaffStatus = async (req, res) => {
 
     const staff = await User.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       { isActive },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!staff) {

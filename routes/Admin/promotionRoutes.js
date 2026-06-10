@@ -81,7 +81,7 @@ router.patch("/:campaignId", asyncHandler(async (req, res) => {
   const campaign = await PromotionCampaign.findOneAndUpdate(
     { _id: req.params.campaignId, hotelId: req.user.hotelId, status: { $ne: "sent" } },
     req.body,
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!campaign) {
@@ -132,7 +132,7 @@ router.patch("/:campaignId/cancel", asyncHandler(async (req, res) => {
   const campaign = await PromotionCampaign.findOneAndUpdate(
     { _id: req.params.campaignId, hotelId: req.user.hotelId, status: { $ne: "sent" } },
     { status: "cancelled" },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!campaign) {

@@ -8,6 +8,10 @@ const accountsTransactionSchema = new mongoose.Schema(
       required: true,
       index: true,
     immutable: true},
+    transactionNumber: {
+      type: String,
+      index: true,
+    },
     date: { type: Date, default: Date.now },
     type: {
       type: String,
@@ -57,5 +61,6 @@ const accountsTransactionSchema = new mongoose.Schema(
 
 accountsTransactionSchema.index({ hotelId: 1, date: -1, createdAt: -1 });
 accountsTransactionSchema.index({ hotelId: 1, type: 1, category: 1 });
+accountsTransactionSchema.index({ hotelId: 1, transactionNumber: 1 }, { unique: true, sparse: true });
 
 module.exports = mongoose.model("AccountsTransaction", accountsTransactionSchema);

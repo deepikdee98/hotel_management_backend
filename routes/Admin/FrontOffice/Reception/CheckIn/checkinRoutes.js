@@ -12,9 +12,13 @@ const {
 
 const { protect } = require("../../../../../middleware/authMiddleware");
 const { authorizeRoles } = require("../../../../../middleware/roleMiddleware");
+const { createReadUrl, createUploadUrl } = require("../../../../../controllers/uploadController");
+const { validateS3UploadRequest } = require("../../../../../middleware/fileUploadValidation");
 
 router.use(protect, authorizeRoles("hoteladmin", "staff"));
 
+router.post("/uploads/presign", validateS3UploadRequest, createUploadUrl);
+router.post("/uploads/read-url", createReadUrl);
 router.post("/", createCheckIn);
 router.get("/", getAllCheckIns);
 router.get("/:id", getCheckInById);

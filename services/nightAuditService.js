@@ -220,7 +220,7 @@ const updateRoomStatus = async ({ hotelId, businessDateKey, errors }) => {
         const updatedRoom = await Room.findOneAndUpdate(
           { _id: reservation.room, hotelId },
           { status: "available" },
-          { new: true }
+          { returnDocument: "after" }
         );
 
         if (updatedRoom) {
@@ -239,7 +239,7 @@ const updateRoomStatus = async ({ hotelId, businessDateKey, errors }) => {
       const updatedRoom = await Room.findOneAndUpdate(
         { _id: reservation.room, hotelId },
         { status: "occupied" },
-        { new: true }
+        { returnDocument: "after" }
       );
 
       if (updatedRoom) {
@@ -341,7 +341,7 @@ const generateReport = async ({ hotelId, businessDate, businessDateKey, startedA
     },
   };
 
-  return NightAuditReport.findByIdAndUpdate(reportId, updatePayload, { new: true });
+  return NightAuditReport.findByIdAndUpdate(reportId, updatePayload, { returnDocument: "after" });
 };
 
 const rollBusinessDate = async ({ hotelId, businessDate, businessDateKey, errors }) => {

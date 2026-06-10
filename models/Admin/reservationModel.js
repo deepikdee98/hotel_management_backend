@@ -25,6 +25,8 @@ const reservationSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  guestPhotoUrl: String,
+  guestPhotoKey: String,
 
   phone: String,
   email: String,

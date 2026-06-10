@@ -1,14 +1,4 @@
-const fs = require("fs");
-const path = require("path");
 const PDFDocument = require("pdfkit");
-
-function ensureInvoiceDir() {
-  const invoiceDir = path.join(process.cwd(), "storage", "invoices");
-  if (!fs.existsSync(invoiceDir)) {
-    fs.mkdirSync(invoiceDir, { recursive: true });
-  }
-  return invoiceDir;
-}
 
 function drawRow(doc, label, value) {
   doc.fontSize(11).text(label, 60, doc.y, { continued: true }).text(String(value), { align: "right" });
@@ -16,14 +6,11 @@ function drawRow(doc, label, value) {
 }
 
 async function generateCheckoutInvoicePdf(payload) {
-  const invoiceDir = ensureInvoiceDir();
   const fileName = `${payload.invoiceNumber}.pdf`;
-  const absolutePath = path.join(invoiceDir, fileName);
-  const relativePath = path.join("storage", "invoices", fileName);
 
   const doc = new PDFDocument({ size: "A4", margin: 50 });
-  const stream = fs.createWriteStream(absolutePath);
-  doc.pipe(stream);
+  const chunks = [];
+  doc.on("data", (chunk) => chunks.push(chunk));
 
   doc.fontSize(20).text(payload.title || "Tax Invoice", { align: "center" });
   doc.moveDown(0.3);
@@ -70,15 +57,16 @@ async function generateCheckoutInvoicePdf(payload) {
 
   doc.end();
 
-  await new Promise((resolve, reject) => {
-    stream.on("finish", resolve);
-    stream.on("error", reject);
+  const buffer = await new Promise((resolve, reject) => {
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
   });
 
   return {
+    buffer,
     fileName,
-    absolutePath,
-    relativePath,
+    contentType: "application/pdf",
+    fileSize: buffer.length,
   };
 }
 

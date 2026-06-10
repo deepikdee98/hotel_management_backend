@@ -13,6 +13,8 @@ exports.createGuest = async (req, res) => {
     idNumber,
     address,
     nationality,
+    guestPhotoUrl,
+    guestPhotoKey,
   } = req.body;
 
   if (!fullName) {
@@ -37,6 +39,8 @@ exports.createGuest = async (req, res) => {
     idNumber,
     address,
     nationality,
+    guestPhotoUrl,
+    guestPhotoKey,
     hotelId: req.user.hotelId,
   });
 
@@ -96,6 +100,7 @@ exports.getGuests = async (req, res) => {
     name: g.fullName,
     email: g.email,
     phone: g.phone,
+    photo: g.guestPhotoUrl || g.avatar || "",
     country: g.nationality,
     visits: g.visits,
     totalSpent: g.totalSpent,
@@ -139,6 +144,8 @@ exports.updateGuest = async (req, res) => {
     "idNumber",
     "address",
     "nationality",
+    "guestPhotoUrl",
+    "guestPhotoKey",
   ];
 
   allowedFields.forEach((field) => {

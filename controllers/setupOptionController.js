@@ -102,7 +102,7 @@ const deactivateSetupOption = asyncHandler(async (req, res) => {
   const option = await SetupOption.findOneAndUpdate(
     { _id: req.params.id, hotelId },
     { isActive: false },
-    { new: true }
+    { returnDocument: "after" }
   );
 
   if (!option) {

@@ -46,7 +46,7 @@ exports.getInvoice = asyncHandler(async (req, res) => {
 });
 
 exports.updateInvoice = asyncHandler(async (req, res) => {
-  const invoice = await Invoice.findOneAndUpdate({ _id: req.params.invoiceId, hotelId: requireTenant(req) }, req.body, { new: true });
+  const invoice = await Invoice.findOneAndUpdate({ _id: req.params.invoiceId, hotelId: requireTenant(req) }, req.body, { returnDocument: "after" });
   if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
   res.json({ success: true, data: mapInvoice(invoice) });
 });
@@ -55,7 +55,7 @@ exports.sendInvoice = asyncHandler(async (req, res) => {
   const invoice = await Invoice.findOneAndUpdate(
     { _id: req.params.invoiceId, hotelId: requireTenant(req) },
     { sent: true, sentMeta: req.body },
-    { new: true }
+    { returnDocument: "after" }
   );
   if (!invoice) return res.status(404).json({ success: false, message: "Invoice not found" });
   res.json({ success: true, data: mapInvoice(invoice), message: "Invoice marked as sent" });

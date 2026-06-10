@@ -17,6 +17,22 @@ const getCookieValue = (cookieHeader, name) => {
     return match ? decodeURIComponent(match.split("=").slice(1).join("=")) : null;
 }
 
+const getEffectiveModules = (user, hotel = null) => {
+    const userModules = Array.isArray(user?.modules) ? user.modules : [];
+
+    if (user?.role === "superadmin" || !user?.hotelId) {
+        return userModules;
+    }
+
+    const hotelModules = Array.isArray(hotel?.modules) ? hotel.modules : [];
+
+    if (user.role === "hoteladmin") {
+        return hotelModules;
+    }
+
+    return userModules.filter((moduleName) => hotelModules.includes(moduleName));
+}
+
 const protect = asyncHandler(async (req, res, next) => {
     let token;
     const authHeader = req.headers.Authorization || req.headers.authorization;
@@ -54,14 +70,16 @@ const protect = asyncHandler(async (req, res, next) => {
                 });
             }
 
+            let hotel = null;
+
             // Subscription and Active Status Check
             // Super admins are exempt from hotel subscription checks
             if (req.user.role !== 'superadmin' && req.user.hotelId) {
                 const hotelKey = cacheKeys.hotel(req.user.hotelId);
-                let hotel = await cache.get(hotelKey);
+                hotel = await cache.get(hotelKey);
                 if (!hotel) {
                     hotel = await Hotel.findById(req.user.hotelId)
-                        .select("status isActive expiryDate modules")
+                        .select("name address gstNumber status isActive expiryDate modules")
                         .lean();
                     if (hotel) {
                         await cache.set(hotelKey, hotel, env.authCacheTtlSeconds);
@@ -78,6 +96,13 @@ const protect = asyncHandler(async (req, res, next) => {
                     });
                     return;
                 }
+            }
+
+            req.user.modules = getEffectiveModules(req.user, hotel);
+            if (hotel) {
+                req.user.hotelName = hotel.name || "";
+                req.user.hotelAddress = hotel.address || "";
+                req.user.gstin = hotel.gstNumber || "";
             }
 
             next()

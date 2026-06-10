@@ -17,7 +17,7 @@ exports.createFinancialYear = asyncHandler(async (req, res) => {
 });
 
 exports.updateFinancialYear = asyncHandler(async (req, res) => {
-  const financialYear = await FinancialYear.findOneAndUpdate({ _id: req.params.id, hotelId: requireTenant(req) }, req.body, { new: true });
+  const financialYear = await FinancialYear.findOneAndUpdate({ _id: req.params.id, hotelId: requireTenant(req) }, req.body, { returnDocument: "after" });
   if (!financialYear) return res.status(404).json({ success: false, message: "Financial year not found" });
   res.json({ success: true, data: financialYear });
 });

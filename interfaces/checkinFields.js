@@ -14,6 +14,12 @@ const checkinFields = [
   "parentGuestCheckin",
   "idProofType",
   "idProofNumber",
+  "guestPhotoUrl",
+  "guestPhotoKey",
+  "idProofFrontUrl",
+  "idProofFrontKey",
+  "idProofBackUrl",
+  "idProofBackKey",
 
   "address",
   "country",

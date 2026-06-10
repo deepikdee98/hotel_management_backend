@@ -51,6 +51,8 @@ const userSchema = mongoose.Schema(
     },
     phone: {
       type: String,
+      unique: true,
+      sparse: true,
     },
 
     timezone: {
@@ -109,7 +111,7 @@ const userSchema = mongoose.Schema(
 
 userSchema.index({ hotelId: 1, username: 1 }, { unique: true });
 userSchema.index({ username: 1 });
-userSchema.index({ phone: 1 });
+userSchema.index({ phone: 1 }, { unique: true, sparse: true });
 userSchema.index({ role: 1, isActive: 1 });
 userSchema.index({ hotelId: 1, role: 1, isActive: 1 });
 userSchema.index({ resetOtpExpire: 1 });
