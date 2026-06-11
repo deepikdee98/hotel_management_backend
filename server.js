@@ -93,6 +93,7 @@ app.use("/api/companies", require("./routes/companyRoutes"));
 app.use("/api/travel-agents", require("./routes/travelAgentRoutes"));
 app.use("/api/night-audit", require("./routes/nightAuditRoutes"));
 app.use("/api/referrals", require("./routes/referralRoutes"));
+app.use("/uploads", require("./routes/uploadRoutes"));
 
 app.use(errorHandler);
 

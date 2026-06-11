@@ -8,6 +8,7 @@ const Payment = require("../models/Admin/paymentModel");
 const RoomAdvance = require("../models/Admin/roomAdvanceModel");
 const CompanyLedger = require("../models/Admin/companyLedgerModel");
 const FolioTransaction = require("../models/Admin/folioTransactionModel");
+const Hotel = require("../models/SuperAdmin/hotelModel");
 const HousekeepingTask = require("../models/Admin/housekeepingTaskModel");
 const AuditLog = require("../models/AuditLog");
 const { calculateGSTBreakdown } = require("../utils/gstCalculator");
@@ -98,6 +99,9 @@ exports.completeCheckout = async (req, res) => {
 
   try {
     const hotelId = req.user.hotelId;
+    const hotel = await Hotel.findById(hotelId).select("checkOutTime");
+    const [ho, mi] = (hotel?.checkOutTime || "11:00").split(":").map(Number);
+
     const {
       folioId,
       actualCheckOutTime,
@@ -173,7 +177,22 @@ exports.completeCheckout = async (req, res) => {
     const roomCharges = allTransactions
       .filter((tx) => tx.type === "room-tariff")
       .reduce((sum, tx) => sum + toNum(tx.totalAmount || tx.amount), 0) || groupCheckins.reduce(
-      (sum, item) => sum + Math.max(0, toNum(item.planCharges) + toNum(item.foodCharges) - toNum(item.discount)),
+      (sum, item) => {
+        const nightlyRate = Math.max(0, toNum(item.planCharges) + toNum(item.foodCharges) - toNum(item.discount));
+        const scheduledNights = item.nights || 1;
+        const checkInDate = new Date(item.checkInDate);
+        const checkoutDay = new Date(checkInDate.getTime() + scheduledNights * 24 * 60 * 60 * 1000);
+        checkoutDay.setHours(ho, mi, 0, 0);
+
+        let quantity = scheduledNights;
+        const now = new Date();
+        if (now > checkoutDay) {
+          const extraTime = now.getTime() - checkoutDay.getTime();
+          const extraNights = Math.ceil(extraTime / (1000 * 60 * 60 * 24));
+          quantity += extraNights;
+        }
+        return sum + (nightlyRate * quantity);
+      },
       0
     );
 
