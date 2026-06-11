@@ -38,6 +38,14 @@ const hotelSchema = mongoose.Schema(
       type: String 
     },
 
+    logo: {
+      url: { type: String },
+      key: { type: String },
+      fileName: { type: String },
+      contentType: { type: String },
+      uploadedAt: { type: Date },
+    },
+
     totalRooms: { 
       type: Number, 
       default: 0 

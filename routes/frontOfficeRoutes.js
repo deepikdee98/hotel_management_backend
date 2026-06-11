@@ -182,6 +182,9 @@ const resolveFolioContext = async (folioId, hotelId) => {
 };
 
 const buildFolioData = async (folioId, hotelId) => {
+  const hotel = await Hotel.findById(hotelId).select("checkOutTime");
+  const [ho, mi] = (hotel?.checkOutTime || "11:00").split(":").map(Number);
+
   const context = await resolveFolioContext(folioId, hotelId);
   if (!context) {
     return null;
@@ -295,14 +298,29 @@ const buildFolioData = async (folioId, hotelId) => {
   groupCheckins.forEach((item) => {
     const roomTotal = toNum(item.planCharges) + toNum(item.foodCharges) - toNum(item.discount);
     if (roomTotal <= 0) return;
+
+    const scheduledNights = item.nights || 1;
+    const checkInDate = new Date(item.checkInDate);
+    const checkoutDay = new Date(checkInDate.getTime() + scheduledNights * 24 * 60 * 60 * 1000);
+    checkoutDay.setHours(ho, mi, 0, 0);
+
+    let quantity = scheduledNights;
+    const now = new Date();
+    if (now > checkoutDay) {
+      const extraTime = now.getTime() - checkoutDay.getTime();
+      const extraNights = Math.ceil(extraTime / (1000 * 60 * 60 * 24));
+      quantity += extraNights;
+    }
+
+    const total = roomTotal * quantity;
     charges.unshift({
       id: item._id,
       date: item.checkInDate,
-      description: `Room ${item.roomNumber?.roomNumber || ""} tariff`,
-      quantity: item.nights || 1,
+      description: `Room ${item.roomNumber?.roomNumber || ""} tariff${quantity > scheduledNights ? ` (incl. ${quantity - scheduledNights} overstay nights)` : ""}`,
+      quantity,
       rate: roomTotal,
-      amount: roomTotal,
-      total: roomTotal,
+      amount: total,
+      total: total,
       category: "room-tariff",
       guestId: item._id,
       guestName: item.guestName,
@@ -573,7 +591,7 @@ router.get("/rooms", asyncHandler(async (req, res) => {
     status: { $ne: "checked-out" },
     guestType: { $ne: "PAX" },
     roomNumber: { $in: rooms.map((room) => room._id) },
-  }).select("roomNumber guestName bookingNumber bookingNo checkInDate nights adultMale adultFemale children mobileNo");
+  }).select("roomNumber guestName bookingNumber bookingNo checkInDate nights adultMale adultFemale children mobileNo planCharges foodCharges discount");
 
   const activeByRoom = new Map(activeCheckins.map((item) => [String(item.roomNumber), item]));
   const folioPairs = await Promise.all(
@@ -610,6 +628,9 @@ router.get("/rooms", asyncHandler(async (req, res) => {
   }).lean();
   const blocksByRoom = new Map(activeBlocks.map(b => [String(b.room), b]));
 
+  const hotel = await Hotel.findById(req.user.hotelId).select("checkOutTime")
+  const [ho, mi] = (hotel?.checkOutTime || "11:00").split(":").map(Number)
+
   let normalizedRooms = rooms.map((room) => {
     const activeCheckin = activeByRoom.get(String(room._id));
     if (activeCheckin) {
@@ -618,6 +639,8 @@ router.get("/rooms", asyncHandler(async (req, res) => {
       const checkInDate = activeCheckin.checkInDate ? new Date(activeCheckin.checkInDate) : new Date();
       const nights = Number(activeCheckin.nights || 0);
       const checkOutDate = new Date(checkInDate.getTime() + nights * 24 * 60 * 60 * 1000);
+      checkOutDate.setHours(ho, mi, 0, 0);
+      
       const now = new Date();
       const diffTime = checkOutDate.getTime() - now.getTime();
       let remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
@@ -636,7 +659,10 @@ router.get("/rooms", asyncHandler(async (req, res) => {
         adults: (activeCheckin.adultMale || 0) + (activeCheckin.adultFemale || 0),
         children: activeCheckin.children || 0,
         phone: activeCheckin.mobileNo,
-        remainingDays: remainingDays > 0 ? remainingDays : 0,
+        remainingDays: isNaN(remainingDays) ? 0 : remainingDays,
+        planCharges: activeCheckin.planCharges,
+        foodCharges: activeCheckin.foodCharges,
+        discount: activeCheckin.discount,
       };
     }
 

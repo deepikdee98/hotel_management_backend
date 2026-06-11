@@ -1,5 +1,6 @@
 const Hotel = require("../../../../models/SuperAdmin/hotelModel");
 const SystemConfig = require("../../../../models/SystemConfig");
+const { deleteReplacedS3Objects } = require("../../../../utils/s3Cleanup");
 
 const isValidTimeFormat = (value) => /^([01]\d|2[0-3]):([0-5]\d)$/.test(String(value || ""));
 
@@ -110,6 +111,7 @@ const updateHotelConfig = async (req, res) => {
       currentNumber,
       currentFinancialYear,
       financialYearFormat,
+      logo,
     } = req.body;
 
     if (nightAuditTime !== undefined && !isValidTimeFormat(nightAuditTime)) {
@@ -138,6 +140,18 @@ const updateHotelConfig = async (req, res) => {
     hotel.checkOutTime = checkOutTime || hotel.checkOutTime;
     hotel.currency = currency ? normalizeCurrency(currency) : hotel.currency;
     hotel.dateFormat = dateFormat ? normalizeDateFormat(dateFormat) : hotel.dateFormat;
+    const previousLogoKey = hotel.logo?.key || "";
+    const previousLogoUrl = hotel.logo?.url || "";
+
+    if (logo !== undefined) {
+      hotel.logo = {
+        url: logo?.url || "",
+        key: logo?.key || "",
+        fileName: logo?.fileName || "",
+        contentType: logo?.contentType || "",
+        uploadedAt: logo?.uploadedAt ? new Date(logo.uploadedAt) : new Date(),
+      };
+    }
 
     if (nightAuditTime !== undefined) {
       systemConfig.nightAuditTime = nightAuditTime;
@@ -184,8 +198,21 @@ const updateHotelConfig = async (req, res) => {
       systemConfig.save(),
     ]);
 
+    const cleanupWarnings = logo !== undefined
+      ? await deleteReplacedS3Objects({
+          hotelId: req.user.hotelId,
+          hotelName: updatedHotel.name,
+          replacements: [{
+            oldKey: previousLogoKey,
+            oldUrl: previousLogoUrl,
+            newKey: updatedHotel.logo?.key || "",
+          }],
+        })
+      : [];
+
     res.json({
       message: "Hotel configuration updated successfully",
+      cleanupWarnings,
       hotel: {
         ...updatedHotel.toObject(),
         nightAuditTime: updatedSystemConfig.nightAuditTime,

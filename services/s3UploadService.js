@@ -195,6 +195,12 @@ const generateUniqueFileName = ({ fileName, contentType, prefix, userId, ownerNa
     .toString("hex")}${extensionFor(fileName, contentType)}`;
 };
 
+const generateHotelLogoFileName = ({ fileName, contentType, uploadType }) => {
+  const baseName = sanitizeName(String(fileName || "logo").replace(/\.[^.]+$/, ""));
+  // const typePart = sanitizeName(uploadType || "hotel-logo");
+  return `${baseName}-${Date.now()}${extensionFor(fileName, contentType)}`;
+};
+
 const generateS3Key = ({
   hotelId,
   hotelName,
@@ -209,6 +215,14 @@ const generateS3Key = ({
   const scope = inferStorageScope(uploadType, storageScope);
   const ownerName = scope === "customer" ? sanitizeName(customerName || "customer-NA") : "";
   const category = fileCategoryFor(contentType, uploadType);
+
+  if (sanitizeName(uploadType || "") === "hotel-logo") {
+    return [
+      rootNameFor(hotelId, hotelName),
+      "logo",
+      generateHotelLogoFileName({ fileName, contentType, uploadType }),
+    ].join("/");
+  }
 
   return [
     rootNameFor(hotelId, hotelName),

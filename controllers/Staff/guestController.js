@@ -1,4 +1,5 @@
 const Guest = require("../../models/Admin/guestModel");
+const { deleteReplacedS3Objects } = require("../../utils/s3Cleanup");
 
 
 //@desc    Create Guest
@@ -136,6 +137,14 @@ exports.updateGuest = async (req, res) => {
     throw new Error("Guest not found");
   }
 
+  const fileReplacements = req.body.guestPhotoKey !== undefined
+    ? [{
+        oldKey: guest.guestPhotoKey,
+        oldUrl: guest.guestPhotoUrl,
+        newKey: req.body.guestPhotoKey || "",
+      }]
+    : [];
+
   const allowedFields = [
     "fullName",
     "email",
@@ -155,10 +164,16 @@ exports.updateGuest = async (req, res) => {
   });
 
   const updated = await guest.save();
+  const cleanupWarnings = await deleteReplacedS3Objects({
+    hotelId: req.user.hotelId,
+    hotelName: req.user.hotelName,
+    replacements: fileReplacements,
+  });
 
   res.json({
     success: true,
     message: "Guest updated successfully",
+    cleanupWarnings,
     guest: updated,
   });
 };

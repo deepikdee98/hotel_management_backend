@@ -2,6 +2,7 @@ const Reservation = require("../../../../models/Admin/reservationModel");
 const Room = require("../../../../models/Admin/roomModel");
 const mongoose = require("mongoose");
 const generateBookingNumber = require("../Reception/CheckIn/generateBookingNumber");
+const { deleteReplacedS3Objects } = require("../../../../utils/s3Cleanup");
 
 // @desc Get Reservations 
 // @route GET /admin/reservations 
@@ -230,13 +231,36 @@ const updateReservationStatus = async (req, res) => {
 
 const updateReservation = async (req, res) => {
   try {
+    const reservation = await Reservation.findOne({ _id: req.params.id, hotelId: req.user.hotelId });
+
+    if (!reservation) {
+      return res.status(404).json({
+        message: "Reservation not found"
+      });
+    }
+
+    const fileReplacements = req.body.guestPhotoKey !== undefined
+      ? [{
+          oldKey: reservation.guestPhotoKey,
+          oldUrl: reservation.guestPhotoUrl,
+          newKey: req.body.guestPhotoKey || "",
+        }]
+      : [];
+
     const updated = await Reservation.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       req.body,
       { returnDocument: "after" }
     );
 
+    const cleanupWarnings = await deleteReplacedS3Objects({
+      hotelId: req.user.hotelId,
+      hotelName: req.user.hotelName,
+      replacements: fileReplacements,
+    });
+
     res.json({
       message: "Reservation updated",
+      cleanupWarnings,
       reservation: updated
     });
 

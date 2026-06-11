@@ -6,6 +6,7 @@ const Room = require('../../../../../models/Admin/roomModel');
 const Hotel = require('../../../../../models/SuperAdmin/hotelModel');
 const Reservation = require('../../../../../models/Admin/reservationModel');
 const generateBookingNumber = require('./generateBookingNumber');
+const { deleteReplacedS3Objects } = require('../../../../../utils/s3Cleanup');
 
 const parseStructuredValue = (value, fallback) => {
   if (value === undefined || value === null) return fallback;
@@ -711,14 +712,42 @@ const updateCheckIn = async (req, res) => {
           }
     }
 
+    const fileReplacements = [
+      {
+        keyField: "guestPhotoKey",
+        urlField: "guestPhotoUrl",
+      },
+      {
+        keyField: "idProofFrontKey",
+        urlField: "idProofFrontUrl",
+      },
+      {
+        keyField: "idProofBackKey",
+        urlField: "idProofBackUrl",
+      },
+    ]
+      .filter(({ keyField }) => updateData[keyField] !== undefined)
+      .map(({ keyField, urlField }) => ({
+        oldKey: checkin[keyField],
+        oldUrl: checkin[urlField],
+        newKey: updateData[keyField] || "",
+      }));
+
     const updated = await Checkin.findOneAndUpdate({ _id: id, hotelId: req.user.hotelId }, updateData, { returnDocument: "after" })
       .populate({ path: "roomNumber", select: "roomNumber" })
       .populate({ path: "roomType", select: "code" })
       .populate({ path: "planType", select: "code" });
 
+    const cleanupWarnings = await deleteReplacedS3Objects({
+      hotelId: req.user.hotelId,
+      hotelName: req.user.hotelName,
+      replacements: fileReplacements,
+    });
+
     res.status(200).json({
       success: true,
       message: "Check-in updated successfully",
+      cleanupWarnings,
       data: updated
     });
 
