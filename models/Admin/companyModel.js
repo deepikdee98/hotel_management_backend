@@ -16,7 +16,6 @@ const companySchema = new mongoose.Schema(
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
       index: true,
@@ -71,11 +70,10 @@ companySchema.index({ hotelId: 1, status: 1 });
 companySchema.index({ hotelId: 1, code: 1 }, { unique: true });
 
 // Pre-save middleware to ensure code is uppercase
-companySchema.pre("save", function (next) {
+companySchema.pre("save", function () {
   if (this.code) {
     this.code = this.code.toUpperCase();
   }
-  next();
 });
 
 module.exports = mongoose.model("Company", companySchema);

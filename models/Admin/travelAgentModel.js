@@ -16,7 +16,6 @@ const travelAgentSchema = new mongoose.Schema(
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
       index: true,
@@ -65,11 +64,10 @@ const travelAgentSchema = new mongoose.Schema(
 travelAgentSchema.index({ hotelId: 1, code: 1 }, { unique: true });
 
 // Pre-save middleware to convert code to uppercase
-travelAgentSchema.pre("save", function (next) {
+travelAgentSchema.pre("save", function () {
   if (this.code) {
     this.code = this.code.toUpperCase();
   }
-  next();
 });
 
 module.exports = mongoose.model("TravelAgent", travelAgentSchema);

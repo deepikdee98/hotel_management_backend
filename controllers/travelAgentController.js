@@ -1,9 +1,45 @@
 const asyncHandler = require("express-async-handler");
+const mongoose = require("mongoose");
 const TravelAgent = require("../models/Admin/travelAgentModel");
 
 const getHotelId = (req) => {
   const hotelId = req.user?.hotelId || req.query.hotelId || req.body.hotelId;
   return hotelId ? String(hotelId) : "";
+};
+
+const cleanString = (value) => typeof value === "string" ? value.trim() : "";
+
+const normalizeHotelId = (value) => {
+  const hotelId = value?._id || value;
+  return hotelId ? String(hotelId) : "";
+};
+
+const handleTravelAgentSaveError = (res, error) => {
+  if (error?.code === 11000) {
+    return res.status(409).json({
+      success: false,
+      message: "Travel agent code already exists. Please use a different code.",
+    });
+  }
+
+  if (error?.name === "ValidationError") {
+    return res.status(400).json({
+      success: false,
+      message: Object.values(error.errors || {})[0]?.message || "Invalid travel agent details",
+    });
+  }
+
+  if (error?.name === "CastError") {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid travel agent or hotel id",
+    });
+  }
+
+  return res.status(400).json({
+    success: false,
+    message: error?.message || "Unable to save travel agent",
+  });
 };
 
 // Get all active travel agents for the hotel
@@ -30,8 +66,10 @@ const getTravelAgents = asyncHandler(async (req, res) => {
 
 // Create a new travel agent
 const createTravelAgent = asyncHandler(async (req, res) => {
-  const hotelId = req.user?.hotelId || req.query.hotelId || req.body.hotelId;
+  const hotelId = normalizeHotelId(req.user?.hotelId || req.query.hotelId || req.body.hotelId);
   const { name, code, contactPerson, phone, email, address, gstNumber, creditAllowed, creditLimit } = req.body;
+  const normalizedName = cleanString(name);
+  const normalizedCode = cleanString(code).toUpperCase();
 
   if (!hotelId) {
     return res.status(400).json({
@@ -40,86 +78,24 @@ const createTravelAgent = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!name || !code) {
+  if (!mongoose.Types.ObjectId.isValid(hotelId)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid hotel id",
+    });
+  }
+
+  if (!normalizedName || !normalizedCode) {
     return res.status(400).json({
       success: false,
       message: "Travel agent name and code are required",
     });
   }
 
-  // Check if code already exists for this hotel
-  const existingTravelAgent = await TravelAgent.findOne({
-    hotelId: String(hotelId),
-    code: code.toUpperCase(),
-  });
-
-  if (existingTravelAgent) {
-    return res.status(409).json({
-      success: false,
-      message: "Travel agent code already exists for this hotel",
-    });
-  }
-
-  // Validate credit limit
-  if (creditLimit !== undefined && creditLimit < 0) {
-    return res.status(400).json({
-      success: false,
-      message: "Credit limit cannot be negative",
-    });
-  }
-
-  const travelAgent = await TravelAgent.create({
-    hotelId: String(hotelId),
-    name: name.trim(),
-    code: code.toUpperCase().trim(),
-    contactPerson: contactPerson?.trim(),
-    phone: phone?.trim(),
-    email: email?.trim(),
-    address: address?.trim(),
-    gstNumber: gstNumber?.trim(),
-    creditAllowed: creditAllowed || false,
-    creditLimit: creditLimit || 0,
-    status: true
-  });
-
-  res.status(201).json({
-    success: true,
-    data: travelAgent,
-    message: "Travel agent created successfully",
-  });
-});
-
-// Update a travel agent
-const updateTravelAgent = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const hotelId = req.user?.hotelId || req.query.hotelId || req.body.hotelId;
-  const { name, code, contactPerson, phone, email, address, gstNumber, creditAllowed, creditLimit } = req.body;
-
-  if (!hotelId) {
-    return res.status(400).json({
-      success: false,
-      message: "Hotel ID is required",
-    });
-  }
-
-  const travelAgent = await TravelAgent.findOne({
-    _id: id,
-    hotelId: String(hotelId),
-  });
-
-  if (!travelAgent) {
-    return res.status(404).json({
-      success: false,
-      message: "Travel agent not found",
-    });
-  }
-
-  // Check if code is being changed and if it conflicts
-  if (code && code.toUpperCase() !== travelAgent.code) {
+  try {
     const existingTravelAgent = await TravelAgent.findOne({
-      hotelId: String(hotelId),
-      code: code.toUpperCase(),
-      _id: { $ne: id },
+      hotelId,
+      code: normalizedCode,
     });
 
     if (existingTravelAgent) {
@@ -128,34 +104,114 @@ const updateTravelAgent = asyncHandler(async (req, res) => {
         message: "Travel agent code already exists for this hotel",
       });
     }
-  }
 
-  // Validate credit limit
-  if (creditLimit !== undefined && creditLimit < 0) {
+    if (creditLimit !== undefined && Number(creditLimit) < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Credit limit cannot be negative",
+      });
+    }
+
+    const travelAgent = await TravelAgent.create({
+      hotelId,
+      name: normalizedName,
+      code: normalizedCode,
+      contactPerson: cleanString(contactPerson),
+      phone: cleanString(phone),
+      email: cleanString(email),
+      address: cleanString(address),
+      gstNumber: cleanString(gstNumber),
+      creditAllowed: Boolean(creditAllowed),
+      creditLimit: Number(creditLimit || 0),
+      status: true
+    });
+
+    res.status(201).json({
+      success: true,
+      data: travelAgent,
+      message: "Travel agent created successfully",
+    });
+  } catch (error) {
+    return handleTravelAgentSaveError(res, error);
+  }
+});
+
+// Update a travel agent
+const updateTravelAgent = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const hotelId = normalizeHotelId(req.user?.hotelId || req.query.hotelId || req.body.hotelId);
+  const { name, code, contactPerson, phone, email, address, gstNumber, creditAllowed, creditLimit } = req.body;
+  const normalizedCode = code !== undefined ? cleanString(code).toUpperCase() : undefined;
+
+  if (!hotelId) {
     return res.status(400).json({
       success: false,
-      message: "Credit limit cannot be negative",
+      message: "Hotel ID is required",
     });
   }
 
-  // Update fields
-  if (name !== undefined) travelAgent.name = name.trim();
-  if (code !== undefined) travelAgent.code = code.toUpperCase().trim();
-  if (contactPerson !== undefined) travelAgent.contactPerson = contactPerson?.trim();
-  if (phone !== undefined) travelAgent.phone = phone?.trim();
-  if (email !== undefined) travelAgent.email = email?.trim();
-  if (address !== undefined) travelAgent.address = address?.trim();
-  if (gstNumber !== undefined) travelAgent.gstNumber = gstNumber?.trim();
-  if (creditAllowed !== undefined) travelAgent.creditAllowed = creditAllowed;
-  if (creditLimit !== undefined) travelAgent.creditLimit = creditLimit;
+  if (!mongoose.Types.ObjectId.isValid(hotelId) || !mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid travel agent or hotel id",
+    });
+  }
 
-  await travelAgent.save();
+  try {
+    const travelAgent = await TravelAgent.findOne({
+      _id: id,
+      hotelId,
+    });
 
-  res.status(200).json({
-    success: true,
-    data: travelAgent,
-    message: "Travel agent updated successfully",
-  });
+    if (!travelAgent) {
+      return res.status(404).json({
+        success: false,
+        message: "Travel agent not found",
+      });
+    }
+
+    if (normalizedCode && normalizedCode !== travelAgent.code) {
+      const existingTravelAgent = await TravelAgent.findOne({
+        hotelId,
+        code: normalizedCode,
+        _id: { $ne: id },
+      });
+
+      if (existingTravelAgent) {
+        return res.status(409).json({
+          success: false,
+          message: "Travel agent code already exists for this hotel",
+        });
+      }
+    }
+
+    if (creditLimit !== undefined && Number(creditLimit) < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Credit limit cannot be negative",
+      });
+    }
+
+    if (name !== undefined) travelAgent.name = cleanString(name);
+    if (code !== undefined) travelAgent.code = normalizedCode;
+    if (contactPerson !== undefined) travelAgent.contactPerson = cleanString(contactPerson);
+    if (phone !== undefined) travelAgent.phone = cleanString(phone);
+    if (email !== undefined) travelAgent.email = cleanString(email);
+    if (address !== undefined) travelAgent.address = cleanString(address);
+    if (gstNumber !== undefined) travelAgent.gstNumber = cleanString(gstNumber);
+    if (creditAllowed !== undefined) travelAgent.creditAllowed = Boolean(creditAllowed);
+    if (creditLimit !== undefined) travelAgent.creditLimit = Number(creditLimit || 0);
+
+    await travelAgent.save();
+
+    res.status(200).json({
+      success: true,
+      data: travelAgent,
+      message: "Travel agent updated successfully",
+    });
+  } catch (error) {
+    return handleTravelAgentSaveError(res, error);
+  }
 });
 
 // Soft delete a travel agent
