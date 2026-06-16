@@ -96,20 +96,40 @@ const getOrCreateSystemConfig = async (hotelId) => {
 };
 
 const resolveRoomRate = async (reservation) => {
-  if (reservation.room && typeof reservation.room.rate === "number") {
-    return reservation.room.rate;
+  const mongoose = require("mongoose");
+  let roomDoc = reservation.room;
+  if (roomDoc && (typeof roomDoc === "string" || mongoose.Types.ObjectId.isValid(roomDoc)) && !roomDoc.roomNumber) {
+    roomDoc = await Room.findById(roomDoc).lean();
+  }
+  const acType = roomDoc?.acType || "NON_AC";
+
+  let roomTypeDoc = reservation.roomType;
+  if (roomTypeDoc && (typeof roomTypeDoc === "string" || mongoose.Types.ObjectId.isValid(roomTypeDoc)) && !roomTypeDoc.baseRate) {
+    roomTypeDoc = await RoomType.findById(roomTypeDoc).lean();
   }
 
-  if (reservation.roomType && typeof reservation.roomType.baseRate === "number") {
-    return reservation.roomType.baseRate;
+  let baseRate = 0;
+  if (roomTypeDoc) {
+    if (acType === "AC") {
+      baseRate = typeof roomTypeDoc.acRate === "number" ? roomTypeDoc.acRate : (roomDoc?.rate || roomTypeDoc.baseRate || 0);
+    } else {
+      baseRate = typeof roomTypeDoc.nonAcRate === "number" ? roomTypeDoc.nonAcRate : (roomDoc?.rate || roomTypeDoc.baseRate || 0);
+    }
+  } else {
+    baseRate = roomDoc?.rate || 0;
   }
 
-  if (reservation.roomType?._id) {
-    const roomType = await RoomType.findById(reservation.roomType._id).select("baseRate").lean();
-    return Number(roomType?.baseRate || 0);
+  const extraBeds = Number(reservation.extraBeds || 0);
+  let extraBedRate = 0;
+  if (extraBeds > 0 && roomTypeDoc) {
+    if (acType === "AC") {
+      extraBedRate = Number(roomTypeDoc.extraBedAcRate || 0);
+    } else {
+      extraBedRate = Number(roomTypeDoc.extraBedNonAcRate || 0);
+    }
   }
 
-  return 0;
+  return Number(baseRate) + (extraBeds * extraBedRate);
 };
 
 const postRoomCharges = async ({ hotelId, businessDate, businessDateKey, errors }) => {
@@ -117,8 +137,8 @@ const postRoomCharges = async ({ hotelId, businessDate, businessDateKey, errors 
     hotelId,
     status: { $in: CHECKED_IN_STATUSES },
   })
-    .populate("room", "rate status")
-    .populate("roomType", "baseRate");
+    .populate("room", "rate status acType")
+    .populate("roomType", "baseRate nonAcRate acRate extraBedNonAcRate extraBedAcRate");
 
   let postedCount = 0;
   let totalRevenue = 0;

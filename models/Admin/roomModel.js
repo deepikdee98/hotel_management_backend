@@ -28,6 +28,13 @@ rate: {
   type: Number,
   default: null // fallback to roomType.baseRate
 },
+
+  acType: {
+    type: String,
+    enum: ["AC", "NON_AC"],
+    default: "NON_AC"
+  },
+
   status: {
     type: String,
     enum: ["available", "occupied", "reserved", "cleaning", "maintenance", "blocked"],

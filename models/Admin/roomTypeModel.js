@@ -28,6 +28,26 @@ const roomTypeSchema = mongoose.Schema(
     required: true
   },
 
+  nonAcRate: {
+    type: Number,
+    default: 0
+  },
+
+  acRate: {
+    type: Number,
+    default: 0
+  },
+
+  extraBedNonAcRate: {
+    type: Number,
+    default: 0
+  },
+
+  extraBedAcRate: {
+    type: Number,
+    default: 0
+  },
+
   maxOccupancy: {
     type: Number,
     required: true

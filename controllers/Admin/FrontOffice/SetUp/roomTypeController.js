@@ -1,5 +1,15 @@
 const RoomType = require('../../../../models/Admin/roomTypeModel');
 
+const calculateTaxExclusiveRate = (rate, gstPercentage, gstType) => {
+  const value = Number(rate || 0);
+  const percentage = Number(gstPercentage) || 0;
+
+  if (percentage > 0 && gstType === "INCLUSIVE") {
+    return (value * 100) / (100 + percentage);
+  }
+
+  return value;
+};
 
 // @desc    Get Room Types
 // @route   GET /admin/setup/room-types
@@ -28,11 +38,22 @@ const getRoomTypes = async (req, res) => {
 // @access  Private (Hotel Admin)
 const createRoomType = async (req, res) => {
   try {
-    const { name, code, baseRate, maxOccupancy, status, gstPercentage, gstType } = req.body;
+    const { name, code, baseRate, nonAcRate, acRate, extraBedNonAcRate, extraBedAcRate, maxOccupancy, status, gstPercentage, gstType } = req.body;
 
-    if (!name || !code || baseRate == null || maxOccupancy == null) {
+    const rawNonAcRate = nonAcRate != null ? Number(nonAcRate) : baseRate != null ? Number(baseRate) : 0;
+    const rawAcRate = acRate != null ? Number(acRate) : 0;
+    const rawExtraBedNonAc = extraBedNonAcRate != null ? Number(extraBedNonAcRate) : 0;
+    const rawExtraBedAc = extraBedAcRate != null ? Number(extraBedAcRate) : 0;
+
+    if (!name || !code || maxOccupancy == null) {
       return res.status(400).json({
-        message: "All fields are required"
+        message: "Name, code and max occupancy are required"
+      });
+    }
+
+    if (rawNonAcRate <= 0 && rawAcRate <= 0) {
+      return res.status(400).json({
+        message: "Enter at least one rate: Non AC or AC"
       });
     }
 
@@ -53,19 +74,22 @@ const createRoomType = async (req, res) => {
       });
     }
 
-    // GST Calculation logic
     const percentage = Number(gstPercentage) || 0;
     const type = gstType || "EXCLUSIVE";
-    let calculatedBaseRate = Number(baseRate);
-
-    if (percentage > 0 && type === "INCLUSIVE") {
-      calculatedBaseRate = (calculatedBaseRate * 100) / (100 + percentage);
-    }
+    const calculatedNonAcRate = calculateTaxExclusiveRate(rawNonAcRate, percentage, type);
+    const calculatedAcRate = calculateTaxExclusiveRate(rawAcRate, percentage, type);
+    const calculatedExtraBedNonAc = calculateTaxExclusiveRate(rawExtraBedNonAc, percentage, type);
+    const calculatedExtraBedAc = calculateTaxExclusiveRate(rawExtraBedAc, percentage, type);
+    const calculatedBaseRate = calculatedNonAcRate > 0 ? calculatedNonAcRate : calculatedAcRate;
 
     const roomType = await RoomType.create({
       name,
       code,
       baseRate: calculatedBaseRate,
+      nonAcRate: calculatedNonAcRate,
+      acRate: calculatedAcRate,
+      extraBedNonAcRate: calculatedExtraBedNonAc,
+      extraBedAcRate: calculatedExtraBedAc,
       maxOccupancy,
       gstPercentage: percentage,
       gstType: type,
@@ -94,7 +118,7 @@ const createRoomType = async (req, res) => {
 const updateRoomType = async (req, res) => {
 
   try {
-    const { status, baseRate, gstPercentage, gstType } = req.body;
+    const { status, baseRate, nonAcRate, acRate, extraBedNonAcRate, extraBedAcRate, gstPercentage, gstType } = req.body;
 
     if (status && !["active", "inactive"].includes(status)) {
       return res.status(400).json({
@@ -109,27 +133,46 @@ const updateRoomType = async (req, res) => {
       });
     }
 
-    // Logic to recalculate baseRate if relevant fields are updated
     let updateData = { ...req.body };
-    
-    // Check if we need to recalculate baseRate
-    // We only recalculate if baseRate is provided in the body
-    // If only gstPercentage or gstType is provided without baseRate, 
-    // it's ambiguous if we should use the stored baseRate (which is already calculated).
-    // Usually, updating GST config implies the baseRate should be recalculated from the "raw" price.
-    // However, since we overwrite baseRate, we don't have the "raw" price anymore.
-    // The requirement says "Add new fields as optional (with defaults)" and "Refactor only where required".
-    
-    if (baseRate != null) {
-      const percentage = gstPercentage != null ? Number(gstPercentage) : existingRoomType.gstPercentage;
-      const type = gstType || existingRoomType.gstType;
-      let calculatedBaseRate = Number(baseRate);
+    const percentage = gstPercentage != null ? Number(gstPercentage) : existingRoomType.gstPercentage;
+    const type = gstType || existingRoomType.gstType;
+    const nextNonAcRate = nonAcRate != null || baseRate != null
+      ? Number(nonAcRate != null ? nonAcRate : baseRate)
+      : Number(existingRoomType.nonAcRate || 0);
+    const nextAcRate = acRate != null ? Number(acRate) : Number(existingRoomType.acRate || 0);
 
-      if (percentage > 0 && type === "INCLUSIVE") {
-        calculatedBaseRate = (calculatedBaseRate * 100) / (100 + percentage);
-      }
-      updateData.baseRate = calculatedBaseRate;
+    const nextExtraBedNonAcRate = extraBedNonAcRate != null
+      ? Number(extraBedNonAcRate)
+      : Number(existingRoomType.extraBedNonAcRate || 0);
+    const nextExtraBedAcRate = extraBedAcRate != null
+      ? Number(extraBedAcRate)
+      : Number(existingRoomType.extraBedAcRate || 0);
+
+    if (nextNonAcRate <= 0 && nextAcRate <= 0) {
+      return res.status(400).json({
+        message: "Enter at least one rate: Non AC or AC"
+      });
     }
+
+    if (nonAcRate != null || baseRate != null) {
+      updateData.nonAcRate = calculateTaxExclusiveRate(nextNonAcRate, percentage, type);
+    }
+
+    if (acRate != null) {
+      updateData.acRate = calculateTaxExclusiveRate(nextAcRate, percentage, type);
+    }
+
+    if (extraBedNonAcRate != null) {
+      updateData.extraBedNonAcRate = calculateTaxExclusiveRate(nextExtraBedNonAcRate, percentage, type);
+    }
+
+    if (extraBedAcRate != null) {
+      updateData.extraBedAcRate = calculateTaxExclusiveRate(nextExtraBedAcRate, percentage, type);
+    }
+
+    const calculatedNextNonAcRate = updateData.nonAcRate != null ? updateData.nonAcRate : Number(existingRoomType.nonAcRate || 0);
+    const calculatedNextAcRate = updateData.acRate != null ? updateData.acRate : Number(existingRoomType.acRate || 0);
+    updateData.baseRate = calculatedNextNonAcRate > 0 ? calculatedNextNonAcRate : calculatedNextAcRate;
 
     const updated = await RoomType.findOneAndUpdate({ _id: req.params.id, hotelId: req.user.hotelId },
       updateData,

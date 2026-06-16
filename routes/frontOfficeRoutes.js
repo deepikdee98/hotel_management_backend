@@ -391,10 +391,15 @@ router.get("/floors", asyncHandler(async (req, res) => {
 }));
 
 router.post("/floors", asyncHandler(async (req, res) => {
+  const floorType = ["rooms", "banquet"].includes(String(req.body.floorType || "").toLowerCase())
+    ? String(req.body.floorType).toLowerCase()
+    : "rooms";
+
   const floor = await Floor.create({
     hotelId: req.user.hotelId,
     name: req.body.name,
     floorNumber: req.body.floorNumber,
+    floorType,
   });
 
   res.status(201).json({ success: true, data: floor });
@@ -402,11 +407,16 @@ router.post("/floors", asyncHandler(async (req, res) => {
 
 router.post("/floors/:floorId/room-config", asyncHandler(async (req, res) => {
   const { roomTypeId, count, startingRoomNumber, roomNumberFormat } = req.body;
+  const acType = String(req.body.acType || "NON_AC").toUpperCase() === "AC" ? "AC" : "NON_AC";
   const hotelId = req.user.hotelId;
   const floor = await Floor.findOne({ _id: req.params.floorId, hotelId });
 
   if (!floor) {
     return res.status(404).json({ success: false, message: "Floor not found" });
+  }
+
+  if (floor.floorType === "banquet") {
+    return res.status(400).json({ success: false, message: "Cannot add rooms to a banquet hall floor." });
   }
 
   const hotel = await Hotel.findById(hotelId);
@@ -473,9 +483,21 @@ router.post("/floors/:floorId/room-config", asyncHandler(async (req, res) => {
     return res.status(400).json({ success: false, message: "Invalid startingRoomNumber format" });
   }
 
+  const roomRate = acType === "AC"
+    ? Number(roomType.acRate || 0)
+    : Number(roomType.nonAcRate || 0);
+
+  if (roomRate <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: `${acType === "AC" ? "AC" : "Non AC"} rate is not configured for this room type.`
+    });
+  }
+
   floor.roomConfigurations.push({
     roomTypeId,
     count: Number(count),
+    acType,
     startingRoomNumber,
     roomNumberFormat: roomNumberFormat || "numeric",
     rooms,
@@ -490,7 +512,8 @@ router.post("/floors/:floorId/room-config", asyncHandler(async (req, res) => {
         roomNumber,
         roomType: roomTypeId,
         floor: floor.floorNumber,
-        rate: roomType.baseRate,
+        rate: roomRate,
+        acType,
       });
     }
   }
@@ -501,6 +524,7 @@ router.post("/floors/:floorId/room-config", asyncHandler(async (req, res) => {
 
 router.delete("/floors/:floorId/room-config/:roomTypeId", asyncHandler(async (req, res) => {
   const { floorId, roomTypeId } = req.params;
+  const acType = req.query.acType ? (String(req.query.acType).toUpperCase() === "AC" ? "AC" : "NON_AC") : "";
   const hotelId = req.user.hotelId;
 
   const floor = await Floor.findOne({ _id: floorId, hotelId });
@@ -513,7 +537,7 @@ router.delete("/floors/:floorId/room-config/:roomTypeId", asyncHandler(async (re
   }
 
   const configToDelete = floor.roomConfigurations.find(
-    (config) => config.roomTypeId.toString() === roomTypeId
+    (config) => config.roomTypeId.toString() === roomTypeId && (!acType || (config.acType || "NON_AC") === acType)
   );
 
   if (!configToDelete) {
@@ -529,7 +553,7 @@ router.delete("/floors/:floorId/room-config/:roomTypeId", asyncHandler(async (re
   });
 
   floor.roomConfigurations = floor.roomConfigurations.filter(
-    (config) => config.roomTypeId.toString() !== roomTypeId
+    (config) => !(config.roomTypeId.toString() === roomTypeId && (!acType || (config.acType || "NON_AC") === acType))
   );
 
   await floor.save();
@@ -547,7 +571,17 @@ router.get("/room-types", asyncHandler(async (req, res) => {
 }));
 
 router.post("/room-types", asyncHandler(async (req, res) => {
-  const payload = { ...req.body, hotelId: req.user.hotelId };
+  const nonAcRate = req.body.nonAcRate != null ? Number(req.body.nonAcRate) : Number(req.body.baseRate || 0);
+  const acRate = req.body.acRate != null ? Number(req.body.acRate) : 0;
+
+  if (nonAcRate <= 0 && acRate <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: "Enter at least one rate: Non AC or AC"
+    });
+  }
+
+  const payload = { ...req.body, hotelId: req.user.hotelId, nonAcRate, acRate, baseRate: nonAcRate > 0 ? nonAcRate : acRate };
   const roomType = await RoomType.create(payload);
   res.status(201).json({ success: true, data: roomType });
 }));
@@ -724,7 +758,7 @@ router.get("/rooms/:roomId", asyncHandler(async (req, res) => {
   const room = await Room.findOne({
     _id: req.params.roomId,
     hotelId: req.user.hotelId,
-  }).populate("roomType", "name code baseRate");
+  }).populate("roomType", "name code baseRate nonAcRate acRate extraBedNonAcRate extraBedAcRate");
 
   if (!room) {
     return res.status(404).json({ success: false, message: "Room not found" });
@@ -832,6 +866,7 @@ router.get("/in-house", asyncHandler(async (req, res) => {
     roomNumber: item.roomNumber?.roomNumber,
     roomId: item.roomNumber?._id,
     guestName: item.guestName,
+    guestType: item.guestType || "Regular",
     guestPhotoUrl: item.guestPhotoUrl,
     checkInDate: item.checkInDate,
     checkOutDate: new Date(new Date(item.checkInDate).getTime() + (item.nights || 0) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
@@ -841,6 +876,13 @@ router.get("/in-house", asyncHandler(async (req, res) => {
     roomType: item.roomType,
     planType: item.planType,
     planCharges: item.planCharges || 0,
+    foodCharges: item.foodCharges || 0,
+    discount: item.discount || 0,
+    gstPercentage: item.gstPercentage || 0,
+    gstType: item.gstType || "EXCLUSIVE",
+    gstAmount: item.gstAmount || 0,
+    checkoutPlan: item.checkoutPlan || "",
+    noOfBeds: item.noOfBeds || 0,
     advanceAmount: item.advanceAmount || 0,
   }));
 

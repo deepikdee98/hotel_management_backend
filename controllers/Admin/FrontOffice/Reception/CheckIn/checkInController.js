@@ -47,6 +47,41 @@ const normalizeObjectValue = (value) => {
   return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
 };
 
+const sanitizeCheckInData = (data) => {
+  if (!data || typeof data !== "object") return data;
+
+  const objectIdFields = [
+    "planType",
+    "roomType",
+    "roomNumber",
+    "referredById",
+    "reservationId",
+    "parentGuestCheckin",
+    "mainCheckin"
+  ];
+
+  const enumFields = [
+    "gstType",
+    "stayType",
+    "referredByType",
+    "status"
+  ];
+
+  objectIdFields.forEach((field) => {
+    if (data[field] === "") {
+      data[field] = null;
+    }
+  });
+
+  enumFields.forEach((field) => {
+    if (data[field] === "") {
+      delete data[field];
+    }
+  });
+
+  return data;
+};
+
 const generateBookingGroupId = async (hotelId) => {
   const prefix = `GRP-${new Date().getFullYear()}`;
   const lastGroup = await Checkin.findOne({
@@ -237,6 +272,8 @@ const createCheckIn = async (req, res) => {
     if (checkinData.services !== undefined) checkinData.services = normalizeObjectArray(checkinData.services);
     if (checkinData.companyInfo !== undefined) checkinData.companyInfo = normalizeObjectValue(checkinData.companyInfo);
     
+    sanitizeCheckInData(checkinData);
+
     // Resolve roomType and planType if they are passed as codes/names instead of ObjectIds
     if (checkinData.roomType && !mongoose.Types.ObjectId.isValid(checkinData.roomType)) {
       const rt = await mongoose.model("RoomType").findOne({
@@ -292,7 +329,7 @@ const createCheckIn = async (req, res) => {
       throw new Error("Guest name or mobile is required");
     }
 
-    if (!isExpress) {
+    if (!isExpress && checkinData.guestType !== "PAX") {
       if (!checkinData.email) {
         throw new Error("Email is required for normal check-in");
       }
@@ -303,7 +340,7 @@ const createCheckIn = async (req, res) => {
     }
 
     const room = await Room.findOne({ _id: checkinData.roomNumber, hotelId: req.user.hotelId })
-      .populate("roomType", "baseRate gstPercentage gstType");
+      .populate("roomType", "baseRate nonAcRate acRate extraBedNonAcRate extraBedAcRate gstPercentage gstType");
 
     if (!room) {
       throw new Error("Room not found");
@@ -518,7 +555,7 @@ const addPaxCheckIn = async (req, res) => {
         continue;
       }
 
-      const pax = await Checkin.create({
+      const paxData = {
         hotelId: parentCheckin.hotelId,
         reservationId: parentCheckin.reservationId,
         bookingGroupId: parentCheckin.bookingGroupId,
@@ -530,7 +567,11 @@ const addPaxCheckIn = async (req, res) => {
         roomType: parentCheckin.roomType,
         planType: parentCheckin.planType,
         relation: guest.relationship,
-      });
+      };
+
+      sanitizeCheckInData(paxData);
+
+      const pax = await Checkin.create(paxData);
 
       created.push(pax);
     }
@@ -668,6 +709,8 @@ const updateCheckIn = async (req, res) => {
     if (updateData.companions !== undefined) updateData.companions = normalizeObjectArray(updateData.companions);
     if (updateData.services !== undefined) updateData.services = normalizeObjectArray(updateData.services);
     if (updateData.companyInfo !== undefined) updateData.companyInfo = normalizeObjectValue(updateData.companyInfo);
+
+    sanitizeCheckInData(updateData);
 
     // Resolve roomType and planType if they are passed as codes/names instead of ObjectIds
     if (updateData.roomType && !mongoose.Types.ObjectId.isValid(updateData.roomType)) {

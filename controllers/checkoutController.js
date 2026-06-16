@@ -94,12 +94,26 @@ function buildCompanionInvoiceItems(amount = 0) {
   ];
 }
 
+function resolveHotelLogoUrl(hotel, hotelId) {
+  if (!hotel?.logo?.key) return hotel?.logo?.url || "";
+
+  try {
+    return createS3ReadTarget({
+      hotelId,
+      hotelName: hotel?.name,
+      key: hotel.logo.key,
+    }).readUrl;
+  } catch (error) {
+    return hotel?.logo?.url || "";
+  }
+}
+
 exports.completeCheckout = async (req, res) => {
   let session = null;
 
   try {
     const hotelId = req.user.hotelId;
-    const hotel = await Hotel.findById(hotelId).select("checkOutTime");
+    const hotel = await Hotel.findById(hotelId).select("name phone address city country gstNumber logo checkOutTime");
     const [ho, mi] = (hotel?.checkOutTime || "11:00").split(":").map(Number);
 
     const {
@@ -244,7 +258,7 @@ exports.completeCheckout = async (req, res) => {
       const finalBalance = Number((amountDue - amountPaidAtCheckout).toFixed(2));
 
       // 1. Check for Pending Payment
-      if (finalBalance > 0.01) {
+      if (finalBalance > 1.0) {
         return res.status(400).json({ 
           success: false, 
           message: `Pending payment settlement. Balance: Rs ${finalBalance}`,
@@ -253,7 +267,7 @@ exports.completeCheckout = async (req, res) => {
       }
 
       // 2. Check for Pending Refund (Advance Paid > Final Charges)
-      if (finalBalance < -0.01) {
+      if (finalBalance < -1.0) {
         return res.status(400).json({ 
           success: false, 
           message: `Refund settlement pending. Refund Due: Rs ${Math.abs(finalBalance)}. Please process refund before checkout.`,
@@ -288,7 +302,7 @@ exports.completeCheckout = async (req, res) => {
       }
 
       const computedSplitTotal = splitRows.reduce((sum, row) => sum + toNum(row.amount), 0);
-      if (Math.abs(computedSplitTotal - amountDue) > 0.01) {
+      if (Math.abs(computedSplitTotal - amountDue) > 1.0) {
         return res.status(400).json({
           success: false,
           message: "Split allocation total mismatch",
@@ -350,6 +364,7 @@ exports.completeCheckout = async (req, res) => {
     const normalizedCheckoutTime = actualCheckOutTime ? new Date(actualCheckOutTime) : new Date();
     const invoiceTimestamp = Date.now();
     const invoiceNumber = `INV-${invoiceTimestamp}`;
+    const hotelLogoUrl = resolveHotelLogoUrl(hotel, hotelId);
     let createdInvoice = null;
     const createdCompanionInvoices = [];
 
@@ -453,19 +468,38 @@ exports.completeCheckout = async (req, res) => {
         const pdfInfo = await generateCheckoutInvoicePdf({
           invoiceNumber,
           invoiceDate: normalizedCheckoutTime,
-          hotelName: req.user.hotelName || "Hotel",
-          hotelAddress: req.user.hotelAddress || "",
-          hotelGstin: req.user.gstin || "",
+          hotelName: hotel?.name || req.user.hotelName || "Hotel",
+          hotelAddress: hotel?.address || req.user.hotelAddress || "",
+          hotelCity: hotel?.city || "",
+          hotelCountry: hotel?.country || "",
+          hotelPhone: hotel?.phone || "",
+          hotelGstin: hotel?.gstNumber || req.user.gstin || "",
+          hotelLogoUrl,
           guestName: checkin.guestName || "N/A",
           billToName: checkin.guestName || "N/A",
+          guestGstin: checkin.gstNumber || "",
+          mobileNo: checkin.mobileNo || "",
+          guestAddress: checkin.address || "",
+          nationality: checkin.nationality || "",
+          registerNo: checkin.registerNo || "",
+          checkInDate: checkin.checkInDate,
+          checkOutDate: normalizedCheckoutTime,
+          adults: toNum(checkin.adultMale) + toNum(checkin.adultFemale) || 1,
+          children: toNum(checkin.children),
+          adultChild: `${toNum(checkin.adultMale) + toNum(checkin.adultFemale) || 1} / ${toNum(checkin.children)}`,
           includedCompanions: mainBillCompanions,
           roomNumber: groupCheckins.map((item) => item.roomNumber?.roomNumber || item.roomNumber || "").filter(Boolean).join(", ") || String(checkin.roomNumber || folio.roomId || ""),
+          nights: toNum(checkin.nights || 1),
           stayDuration: `${toNum(checkin.nights || 1)} night(s)`,
           roomCharges,
           serviceCharges,
           cgst: roundedCgst,
           sgst: roundedSgst,
-          totalAmount: roundedTotalAmount,
+          totalAmount: adjustedTotalAmount,
+          payableAmount: adjustedTotalAmount,
+          amountPaid: Math.min(adjustedTotalAmount, advancePaid + totalPaid),
+          balanceDue: Math.max(0, adjustedTotalAmount - advancePaid - totalPaid),
+          paymentMode: normalizedBillingType === "split" ? "Multiple" : (paymentRecords[0]?.mode || "Cash").toUpperCase(),
           paymentSummary: normalizedBillingType === "company"
             ? "Pending to Company"
             : `Collected Rs ${toNum(totalPaid).toFixed(2)} via ${normalizedBillingType === "split" ? "multiple modes" : paymentRecords[0].mode.toUpperCase()}`,
@@ -526,12 +560,26 @@ exports.completeCheckout = async (req, res) => {
             title: "Separate Companion Bill",
             invoiceNumber: companionInvoiceNumber,
             invoiceDate: normalizedCheckoutTime,
-            hotelName: req.user.hotelName || "Hotel",
-            hotelAddress: req.user.hotelAddress || "",
-            hotelGstin: req.user.gstin || "",
+            hotelName: hotel?.name || req.user.hotelName || "Hotel",
+            hotelAddress: hotel?.address || req.user.hotelAddress || "",
+            hotelCity: hotel?.city || "",
+            hotelCountry: hotel?.country || "",
+            hotelPhone: hotel?.phone || "",
+            hotelGstin: hotel?.gstNumber || req.user.gstin || "",
+            hotelLogoUrl,
             guestName: checkin.guestName || "N/A",
             billToName: companion.name || "Companion",
+            mobileNo: companion.mobile || checkin.mobileNo || "",
+            guestAddress: checkin.address || "",
+            nationality: checkin.nationality || "",
+            registerNo: checkin.registerNo || "",
+            checkInDate: checkin.checkInDate,
+            checkOutDate: normalizedCheckoutTime,
+            adults: 1,
+            children: 0,
+            adultChild: "1 / 0",
             roomNumber: groupCheckins.map((item) => item.roomNumber?.roomNumber || item.roomNumber || "").filter(Boolean).join(", ") || String(checkin.roomNumber || folio.roomId || ""),
+            nights: toNum(checkin.nights || 1),
             stayDuration: `${toNum(checkin.nights || 1)} night(s)`,
             roomCharges: 0,
             serviceCharges: 0,

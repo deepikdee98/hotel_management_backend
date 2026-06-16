@@ -20,7 +20,7 @@ const env = {
   mongoUri: process.env.CONNECTION_STRING || "mongodb://127.0.0.1:27017/hotel_management",
   accessTokenSecret: process.env.ACCESS_TOKEN_SECRET,
   refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || process.env.ACCESS_TOKEN_SECRET,
-  accessTokenTtl: process.env.ACCESS_TOKEN_TTL || "15m",
+  accessTokenTtl: process.env.ACCESS_TOKEN_TTL || "8h",
   refreshTokenTtl: process.env.REFRESH_TOKEN_TTL || "30d",
   bcryptSaltRounds: toNumber(process.env.BCRYPT_SALT_ROUNDS, 10),
   corsOrigins: parseOrigins(process.env.CORS_ORIGINS || process.env.FRONTEND_URL),

@@ -63,6 +63,7 @@ const checkinFields = [
   "bookingNo",
   "bookingNumber",
   "noOfBeds",
+  "extraBeds",
 
   "adultMale",
   "adultFemale",

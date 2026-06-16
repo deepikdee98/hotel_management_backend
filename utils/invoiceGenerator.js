@@ -1,59 +1,378 @@
+const http = require("http");
+const https = require("https");
 const PDFDocument = require("pdfkit");
 
-function drawRow(doc, label, value) {
-  doc.fontSize(11).text(label, 60, doc.y, { continued: true }).text(String(value), { align: "right" });
-  doc.moveDown(0.4);
-}
+const PAGE = {
+  left: 30,
+  right: 565,
+  width: 535,
+};
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const toNum = (value) => {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
+};
+
+const money = (value) => toNum(value).toFixed(2);
+
+const clean = (value, fallback = "") => {
+  const text = value === undefined || value === null ? "" : String(value).trim();
+  return text || fallback;
+};
+
+const formatDate = (value) => {
+  const date = value ? new Date(value) : new Date();
+  if (Number.isNaN(date.getTime())) return "";
+  return `${String(date.getDate()).padStart(2, "0")}-${MONTHS[date.getMonth()]}-${date.getFullYear()}`;
+};
+
+const formatDateTime = (value) => {
+  const date = value ? new Date(value) : null;
+  if (!date || Number.isNaN(date.getTime())) return "";
+  let hours = date.getHours();
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const suffix = hours >= 12 ? "PM" : "AM";
+  hours %= 12;
+  if (hours === 0) hours = 12;
+  return `${formatDate(date)} ${String(hours).padStart(2, "0")}:${minutes} ${suffix}`;
+};
+
+const line = (doc, y, x1 = PAGE.left, x2 = PAGE.right) => {
+  doc.moveTo(x1, y).lineTo(x2, y).stroke();
+};
+
+const text = (doc, value, x, y, options = {}) => {
+  doc.text(clean(value), x, y, options);
+};
+
+const detailRow = (doc, label, value, x, y, labelWidth = 90, valueWidth = 210) => {
+  doc.font("Helvetica").fontSize(9);
+  text(doc, label, x, y, { width: labelWidth });
+  text(doc, ":", x + labelWidth, y, { width: 8 });
+  text(doc, value, x + labelWidth + 10, y, { width: valueWidth });
+};
+
+const sectionLabel = (doc, value, x, y, width, align = "left") => {
+  doc.font("Helvetica-Bold").fontSize(9);
+  text(doc, value, x, y, { width, align });
+  doc.font("Helvetica").fontSize(9);
+};
+
+const numberToWords = (amount) => {
+  const n = Math.round(Math.abs(toNum(amount)));
+  if (n === 0) return "Zero Rupees Only";
+
+  const ones = [
+    "",
+    "One",
+    "Two",
+    "Three",
+    "Four",
+    "Five",
+    "Six",
+    "Seven",
+    "Eight",
+    "Nine",
+    "Ten",
+    "Eleven",
+    "Twelve",
+    "Thirteen",
+    "Fourteen",
+    "Fifteen",
+    "Sixteen",
+    "Seventeen",
+    "Eighteen",
+    "Nineteen",
+  ];
+  const tens = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+
+  const belowHundred = (num) => (num < 20 ? ones[num] : `${tens[Math.floor(num / 10)]}${num % 10 ? ` ${ones[num % 10]}` : ""}`);
+  const belowThousand = (num) => {
+    const hundred = Math.floor(num / 100);
+    const rest = num % 100;
+    return `${hundred ? `${ones[hundred]} Hundred` : ""}${hundred && rest ? " " : ""}${rest ? belowHundred(rest) : ""}`.trim();
+  };
+
+  const parts = [];
+  const crore = Math.floor(n / 10000000);
+  const lakh = Math.floor((n % 10000000) / 100000);
+  const thousand = Math.floor((n % 100000) / 1000);
+  const rest = n % 1000;
+  if (crore) parts.push(`${belowThousand(crore)} Crore`);
+  if (lakh) parts.push(`${belowThousand(lakh)} Lakh`);
+  if (thousand) parts.push(`${belowThousand(thousand)} Thousand`);
+  if (rest) parts.push(belowThousand(rest));
+  return `${parts.join(" ")} Rupees Only`;
+};
+
+const fetchLogoBuffer = async (logoUrl) => {
+  if (!logoUrl) return null;
+
+  if (String(logoUrl).startsWith("data:image/")) {
+    const [, base64 = ""] = String(logoUrl).split(",", 2);
+    return base64 ? Buffer.from(base64, "base64") : null;
+  }
+
+  try {
+    const url = new URL(logoUrl);
+    const client = url.protocol === "http:" ? http : https;
+
+    return await new Promise((resolve) => {
+      const request = client.get(url, (response) => {
+        if (response.statusCode < 200 || response.statusCode >= 300) {
+          response.resume();
+          resolve(null);
+          return;
+        }
+
+        const contentType = response.headers["content-type"] || "";
+        if (contentType && !String(contentType).includes("image/") && contentType !== "application/octet-stream") {
+          response.resume();
+          resolve(null);
+          return;
+        }
+
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => resolve(Buffer.concat(chunks)));
+      });
+
+      request.setTimeout(5000, () => {
+        request.destroy();
+        resolve(null);
+      });
+      request.on("error", () => resolve(null));
+    });
+  } catch (error) {
+    return null;
+  }
+};
+
+const drawInitialsLogo = (doc, hotelName) => {
+  const x = 42;
+  const y = 78;
+  const size = 100;
+  const initials = clean(hotelName, "Hotel")
+    .split(/\s+/)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  doc.save();
+  doc.circle(x + size / 2, y + size / 2, size / 2).lineWidth(1).stroke("#111111");
+  doc.circle(x + size / 2, y + size / 2, size / 2 - 7).lineWidth(0.75).stroke("#111111");
+  doc.font("Helvetica-Bold").fontSize(25).text(initials, x, y + 25, { width: size, align: "center" });
+  doc.font("Helvetica").fontSize(7).text("HOTEL", x, y + 52, { width: size, align: "center" });
+  doc.restore();
+};
+
+const drawLogo = async (doc, payload, hotelName) => {
+  const x = 48;
+  const y = 86;
+  const size = 76;
+  const logoBuffer = await fetchLogoBuffer(payload.hotelLogoUrl);
+
+  if (logoBuffer) {
+    try {
+      doc.image(logoBuffer, x, y, {
+        fit: [size, size],
+        align: "center",
+        valign: "center",
+      });
+      return;
+    } catch (error) {
+      // Fall through to initials when PDFKit cannot decode the uploaded image.
+    }
+  }
+
+  drawInitialsLogo(doc, hotelName);
+};
+
+const buildHotelAddress = (payload) => {
+  const parts = [
+    clean(payload.hotelAddress),
+    clean(payload.hotelCity),
+    clean(payload.hotelState),
+    clean(payload.hotelCountry),
+    clean(payload.hotelZip),
+  ].filter(Boolean);
+  return parts.length ? parts.join(", ") : "Address not configured";
+};
+
+const buildChargeRows = (payload) => {
+  if (Array.isArray(payload.chargeRows) && payload.chargeRows.length) {
+    return payload.chargeRows;
+  }
+
+  const rows = [];
+  const nights = Math.max(1, Math.round(toNum(payload.nights || 1)));
+  const roomTotal = toNum(payload.roomCharges);
+  const perNight = nights ? roomTotal / nights : roomTotal;
+  const start = payload.checkInDate ? new Date(payload.checkInDate) : new Date(payload.invoiceDate || Date.now());
+
+  for (let i = 0; i < nights; i += 1) {
+    const rowDate = new Date(start);
+    rowDate.setDate(start.getDate() + i);
+    rows.push({
+      date: formatDate(rowDate),
+      roomNumber: payload.roomNumber,
+      description: "Room Charges",
+      amount: perNight,
+    });
+  }
+
+  if (toNum(payload.serviceCharges) > 0) {
+    rows.push({
+      date: formatDate(payload.invoiceDate),
+      roomNumber: payload.roomNumber,
+      description: "Service Charges",
+      amount: toNum(payload.serviceCharges),
+    });
+  }
+
+  if (!rows.length) {
+    rows.push({
+      date: formatDate(payload.invoiceDate),
+      roomNumber: payload.roomNumber,
+      description: clean(payload.title, "Invoice Charges"),
+      amount: toNum(payload.totalAmount),
+    });
+  }
+
+  return rows;
+};
 
 async function generateCheckoutInvoicePdf(payload) {
   const fileName = `${payload.invoiceNumber}.pdf`;
-
-  const doc = new PDFDocument({ size: "A4", margin: 50 });
+  const doc = new PDFDocument({ size: "A4", margin: 30 });
   const chunks = [];
   doc.on("data", (chunk) => chunks.push(chunk));
 
-  doc.fontSize(20).text(payload.title || "Tax Invoice", { align: "center" });
-  doc.moveDown(0.3);
-  doc.fontSize(10).text(`Invoice No: ${payload.invoiceNumber}`, { align: "right" });
-  doc.text(`Date: ${new Date(payload.invoiceDate).toLocaleString()}`, { align: "right" });
-  doc.moveDown();
+  const roomCharges = toNum(payload.roomCharges);
+  const serviceCharges = toNum(payload.serviceCharges);
+  const subtotal = roomCharges + serviceCharges;
+  const cgst = toNum(payload.cgst);
+  const sgst = toNum(payload.sgst);
+  const gst = cgst + sgst;
+  const total = payload.totalAmount === undefined || payload.totalAmount === null ? subtotal + gst : toNum(payload.totalAmount);
+  const payable = payload.payableAmount === undefined || payload.payableAmount === null ? total : toNum(payload.payableAmount);
+  const paid = payload.amountPaid === undefined || payload.amountPaid === null ? payable : toNum(payload.amountPaid);
+  const balance = toNum(payload.balanceDue || Math.max(0, payable - paid));
+  const cashLabel = clean(payload.paymentMode, "Cash");
+  const hotelName = clean(payload.hotelName, "Hotel");
+  const hotelAddress = buildHotelAddress(payload);
+  const checkIn = payload.checkInDate || payload.invoiceDate;
+  const checkOut = payload.checkOutDate || payload.invoiceDate;
+  const adultChild = clean(payload.adultChild, `${toNum(payload.adults || 1)} / ${toNum(payload.children || 0)}`);
 
-  doc.fontSize(12).text(payload.hotelName || "Hotel");
-  doc.fontSize(10).text(payload.hotelAddress || "Address not configured");
-  doc.text(`GSTIN: ${payload.hotelGstin || "N/A"}`);
-  doc.moveDown();
+  doc.lineWidth(0.5).strokeColor("#111111").fillColor("#000000");
 
-  doc.fontSize(12).text("Guest Details");
-  doc.fontSize(10);
-  drawRow(doc, "Guest Name", payload.guestName || "N/A");
-  if (payload.billToName && payload.billToName !== payload.guestName) {
-    drawRow(doc, "Bill To", payload.billToName);
+  doc.font("Helvetica-Bold").fontSize(11).text(clean(payload.title, "TAX INVOICE").toUpperCase(), PAGE.left, 24, {
+    width: PAGE.width,
+    align: "center",
+  });
+  doc.font("Helvetica").fontSize(8).text(`GST IN. ${clean(payload.hotelGstin, "N/A")}`, 420, 28, {
+    width: 130,
+    align: "left",
+  });
+
+  doc.font("Helvetica-Bold").fontSize(16).text(hotelName, PAGE.left, 62, {
+    width: PAGE.width,
+    align: "center",
+  });
+  await drawLogo(doc, payload, hotelName);
+  doc.font("Helvetica").fontSize(9).text(hotelAddress, 190, 94, {
+    width: 270,
+    align: "center",
+  });
+  if (payload.hotelPhone) {
+    doc.text(`Contact No. : ${clean(payload.hotelPhone)}`, 190, doc.y + 2, { width: 270, align: "center" });
   }
-  drawRow(doc, "Room No", payload.roomNumber || "N/A");
-  drawRow(doc, "Stay Duration", payload.stayDuration || "N/A");
-  const includedCompanions = Array.isArray(payload.includedCompanions) ? payload.includedCompanions : [];
-  if (includedCompanions.length) {
-    drawRow(doc, "Included Companions", includedCompanions.map((item) => item.name).filter(Boolean).join(", "));
+  if (payload.hotelState || payload.stateCode) {
+    doc.text(`STATE : ${clean(payload.hotelState, "N/A")} , STATE CODE : ${clean(payload.stateCode, "N/A")}`, 190, doc.y + 2, {
+      width: 270,
+      align: "center",
+    });
   }
-  doc.moveDown(0.5);
 
-  doc.fontSize(12).text("Billing");
-  doc.fontSize(10);
-  drawRow(doc, "Room Charges", `Rs ${payload.roomCharges.toFixed(2)}`);
-  drawRow(doc, "Service Charges", `Rs ${payload.serviceCharges.toFixed(2)}`);
-  drawRow(doc, "CGST (6%)", `Rs ${payload.cgst.toFixed(2)}`);
-  drawRow(doc, "SGST (6%)", `Rs ${payload.sgst.toFixed(2)}`);
-  doc.fontSize(12).text(`Total Amount: Rs ${payload.totalAmount.toFixed(2)}`, { align: "right" });
-  doc.moveDown();
+  line(doc, 184, PAGE.left, PAGE.right);
 
-  doc.fontSize(11).text("Payment Details");
-  doc.fontSize(10).text(payload.paymentSummary || "Payment details unavailable");
-  if (payload.notes) {
-    doc.moveDown();
-    doc.fontSize(10).text(payload.notes);
+  const billY = 190;
+  detailRow(doc, "Bill To", payload.billToName || payload.guestName, 34, billY, 88, 210);
+  detailRow(doc, "GST IN", payload.guestGstin || payload.companyGstin || "", 340, billY, 76, 135);
+  detailRow(doc, "Company Add.", payload.companyAddress || "", 34, billY + 17, 88, 220);
+  detailRow(doc, "Guest Name", payload.guestName, 34, billY + 34, 88, 220);
+  detailRow(doc, "Mobile No.", payload.mobileNo, 34, billY + 51, 88, 220);
+  detailRow(doc, "Address", payload.guestAddress, 34, billY + 68, 88, 220);
+  detailRow(doc, "Bill No.", payload.invoiceNumber, 34, billY + 93, 88, 220);
+  detailRow(doc, "Bill Date", formatDate(payload.invoiceDate), 340, billY + 93, 76, 140);
+  detailRow(doc, "Nationality", payload.nationality, 34, billY + 116, 88, 220);
+  detailRow(doc, "Adult / Child", adultChild, 340, billY + 116, 76, 140);
+  detailRow(doc, "Check In", formatDateTime(checkIn), 34, billY + 133, 88, 220);
+  detailRow(doc, "Check Out", formatDateTime(checkOut), 340, billY + 133, 76, 140);
+  detailRow(doc, "Room No", payload.roomNumber, 34, billY + 150, 88, 220);
+  detailRow(doc, "Plan", payload.planName || payload.planType || "", 340, billY + 150, 76, 140);
+  detailRow(doc, "Regd No.", payload.registerNo, 340, billY + 167, 76, 140);
+
+  const tableTop = 375;
+  line(doc, tableTop);
+  sectionLabel(doc, "Date", 34, tableTop + 8, 90);
+  sectionLabel(doc, "Particulars", 135, tableTop + 8, 250);
+  sectionLabel(doc, "Amount", 470, tableTop + 8, 70, "right");
+  line(doc, tableTop + 23);
+
+  let rowY = tableTop + 49;
+  const rows = buildChargeRows(payload);
+  rows.slice(0, 5).forEach((row) => {
+    doc.font("Helvetica").fontSize(9);
+    text(doc, row.date, 36, rowY, { width: 80 });
+    text(doc, `Room No. : ${clean(row.roomNumber, payload.roomNumber || "N/A")}`, 135, rowY, { width: 250 });
+    text(doc, money(row.amount), 470, rowY + 15, { width: 70, align: "right" });
+    text(doc, row.description, 148, rowY + 15, { width: 250 });
+    rowY += 34;
+  });
+
+  const totalsTop = 610;
+  line(doc, totalsTop);
+  doc.font("Helvetica").fontSize(9);
+  const cgstRate = clean(payload.cgstRate, "6");
+  const sgstRate = clean(payload.sgstRate, "6");
+  const roundOff = payload.roundOff === undefined || payload.roundOff === null ? total - (subtotal + gst) : toNum(payload.roundOff);
+  const totalRows = [
+    ["Total Amount", subtotal],
+    [`Central GST @ ${cgstRate}%`, cgst],
+    [`State GST @ ${sgstRate}%`, sgst],
+    ["Total GST", gst],
+    ["Round Off", roundOff],
+    ["Net Amount", total],
+    ["Payable", payable],
+  ];
+  totalRows.forEach(([label, value], index) => {
+    const y = totalsTop + 8 + index * 14;
+    text(doc, `${label} :`, 350, y, { width: 95, align: "right" });
+    text(doc, money(value), 458, y, { width: 82, align: "right" });
+  });
+  line(doc, 710);
+
+  doc.font("Helvetica-Bold").fontSize(9);
+  text(doc, cashLabel, 38, 720, { width: 80 });
+  text(doc, money(paid), 145, 720, { width: 80 });
+  if (balance > 0) {
+    text(doc, `Balance ${money(balance)}`, 250, 720, { width: 120 });
   }
-  doc.moveDown(2);
-  doc.fontSize(10).text("Thank you for staying with us.", { align: "center" });
+
+  doc.font("Helvetica").fontSize(9);
+  text(doc, `In Words : ${numberToWords(payable)}`, 38, 740, { width: 490 });
+  text(doc, "Page No.", 34, 775, { width: 70 });
+  text(doc, "1", 125, 775, { width: 30 });
+  text(doc, "E.&O.E.", 82, 798, { width: 80 });
+  text(doc, "Guest Signature", 205, 798, { width: 120 });
+  text(doc, clean(payload.signatureName, hotelName), 420, 782, { width: 110, align: "center" });
+  text(doc, `For ${hotelName}`, 395, 798, { width: 160, align: "center" });
+  doc.fontSize(6).text("Powered by Prevoir Infotech", 438, 820, { width: 120, align: "right" });
 
   doc.end();
 

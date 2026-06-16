@@ -26,7 +26,7 @@ const getReservations = async (req, res) => {
 
     const reservations = await Reservation.find(query)
       .populate("room", "roomNumber floor")
-      .populate("roomType", "name baseRate")
+      .populate("roomType", "name baseRate nonAcRate acRate extraBedNonAcRate extraBedAcRate")
       .sort({ createdAt: -1 });
 
     res.json(reservations);
@@ -63,7 +63,8 @@ const createReservation = async (req, res) => {
       paymentMode,
       totalAmount,
       guestPhotoUrl,
-      guestPhotoKey
+      guestPhotoKey,
+      extraBeds
     } = req.body;
 
     if (
@@ -141,7 +142,8 @@ const createReservation = async (req, res) => {
       paymentMode,
       totalAmount,
       guestPhotoUrl,
-      guestPhotoKey
+      guestPhotoKey,
+      extraBeds: extraBeds || 0
     });
 
     await Room.findOneAndUpdate({ _id: roomDetails._id, hotelId: req.user.hotelId }, {
@@ -318,7 +320,7 @@ const getReservationById = async (req, res) => {
 
     const reservation = await Reservation.findOne(query)
       .populate("room", "roomNumber floor")
-      .populate("roomType", "name baseRate");
+      .populate("roomType", "name baseRate nonAcRate acRate extraBedNonAcRate extraBedAcRate");
 
     if (!reservation) {
       return res.status(404).json({ message: "Reservation not found" });

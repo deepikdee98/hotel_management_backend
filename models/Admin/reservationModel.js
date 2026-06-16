@@ -54,6 +54,11 @@ const reservationSchema = new mongoose.Schema({
     default: 0
   },
 
+  extraBeds: {
+    type: Number,
+    default: 0
+  },
+
   roomType: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "RoomType",

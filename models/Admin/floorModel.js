@@ -17,6 +17,11 @@ const floorSchema = new mongoose.Schema(
       type: Number,
       required: true,
     },
+    floorType: {
+      type: String,
+      enum: ["rooms", "banquet"],
+      default: "rooms",
+    },
     roomConfigurations: [
       {
         roomTypeId: {
@@ -27,6 +32,11 @@ const floorSchema = new mongoose.Schema(
         count: {
           type: Number,
           required: true,
+        },
+        acType: {
+          type: String,
+          enum: ["AC", "NON_AC"],
+          default: "NON_AC",
         },
         startingRoomNumber: {
           type: String,

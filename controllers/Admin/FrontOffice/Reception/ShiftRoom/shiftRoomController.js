@@ -66,7 +66,7 @@ const shiftRoom = asyncHandler(async (req, res) => {
 
   checkin.roomNumber = newRoomNumber;
   checkin.roomType = roomType;
-  checkin.planType = planType;
+  checkin.planType = planType === "" || planType === undefined ? null : planType;
 
   await checkin.save();
 
@@ -77,8 +77,8 @@ const shiftRoom = asyncHandler(async (req, res) => {
     newRoomNumber,
     oldRoomType,
     newRoomType: roomType,
-    planType,
-    referredBy,
+    planType: planType === "" || planType === undefined ? null : planType,
+    referredBy: referredBy === "" || referredBy === undefined ? undefined : referredBy,
     remark
   });
 

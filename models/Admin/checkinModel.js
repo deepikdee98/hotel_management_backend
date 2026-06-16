@@ -125,6 +125,10 @@ const checkinSchema = new mongoose.Schema({
     default: 0
   },
   noOfBeds: Number,
+  extraBeds: {
+    type: Number,
+    default: 0
+  },
   adultMale: Number,
   adultFemale: Number,
   children: Number,

@@ -47,6 +47,8 @@ const getRoomLookup = async (req, res) => {
           checkOut: reservation?.checkOutDate || null,
 
           rate: room.roomType?.baseRate || 0,
+          nonAcRate: room.roomType?.nonAcRate ?? room.roomType?.baseRate ?? 0,
+          acRate: room.roomType?.acRate ?? room.roomType?.baseRate ?? 0,
           gstPercentage: room.roomType?.gstPercentage || 0,
           gstType: room.roomType?.gstType || "EXCLUSIVE"
         };
