@@ -33,7 +33,7 @@ const defaultMasterData = [
   {
     module: "business",
     type: "referral",
-    values: ["Walk-in", "Website", "Phone Call", "Travel Agent", "Corporate", "Friend/Family", "Online Booking", "Other"],
+    values: ["Walk-in", "Website", "Travel Agent", "Corporate", "Friend/Family", "Online Booking", "Other"],
   },
   {
     module: "business",
@@ -43,7 +43,7 @@ const defaultMasterData = [
   {
     module: "business",
     type: "businessSource",
-    values: ["Direct", "OTA", "Travel Agent", "Corporate", "Website", "Walk-in", "Other"],
+    values: ["Direct", "Travel Agent", "Corporate", "Website", "Walk-in", "Other"],
   },
   {
     module: "business",
@@ -58,7 +58,7 @@ const defaultMasterData = [
   {
     module: "guest",
     type: "guestClassification",
-    values: ["Regular", "VIP", "VVIP", "Blacklisted", "Corporate Guest"],
+    values: ["Regular", "VIP","Corporate Guest"],
   },
   {
     module: "guest",
@@ -68,7 +68,7 @@ const defaultMasterData = [
   {
     module: "payment",
     type: "paymentMode",
-    values: ["Cash", "Credit Card", "Debit Card", "UPI", "Net Banking", "Bank Transfer", "Cheque", "Wallet"],
+    values: ["Cash", "Credit Card", "Debit Card", "UPI"],
   },
   {
     module: "payment",
