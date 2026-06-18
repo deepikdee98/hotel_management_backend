@@ -191,6 +191,55 @@ const drawLogo = async (doc, payload, hotelName) => {
   drawInitialsLogo(doc, hotelName);
 };
 
+const drawPaymentQr = async (doc, payload, x, y, size = 80) => {
+  if (!payload.paymentQrUrl) return false;
+  const qrBuffer = await fetchLogoBuffer(payload.paymentQrUrl);
+  if (qrBuffer) {
+    try {
+      doc.image(qrBuffer, x, y, {
+        fit: [size, size],
+      });
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+  return false;
+};
+
+const drawBankDetails = (doc, bank, x, y) => {
+  if (!bank || !bank.accountNumber) return false;
+  
+  doc.font("Helvetica-Bold").fontSize(9);
+  text(doc, "Bank Account Details", x, y);
+  
+  doc.font("Helvetica").fontSize(8);
+  let currentY = y + 14;
+  
+  if (bank.accountName) {
+    text(doc, `A/c Name: ${bank.accountName}`, x, currentY);
+    currentY += 12;
+  }
+  if (bank.accountNumber) {
+    text(doc, `A/c No: ${bank.accountNumber}`, x, currentY);
+    currentY += 12;
+  }
+  if (bank.bankName) {
+    text(doc, `Bank: ${bank.bankName}`, x, currentY);
+    currentY += 12;
+  }
+  if (bank.ifscCode) {
+    text(doc, `IFSC: ${bank.ifscCode}`, x, currentY);
+    currentY += 12;
+  }
+  if (bank.branchName) {
+    text(doc, `Branch: ${bank.branchName}`, x, currentY);
+    currentY += 12;
+  }
+  
+  return true;
+};
+
 const buildHotelAddress = (payload) => {
   const parts = [
     clean(payload.hotelAddress),
@@ -247,10 +296,15 @@ const buildChargeRows = (payload) => {
 
 async function generateCheckoutInvoicePdf(payload) {
   const fileName = `${payload.invoiceNumber}.pdf`;
-  const doc = new PDFDocument({ size: "A4", margin: 30 });
+  const doc = new PDFDocument({ size: "A4", margin: 20 });
   const chunks = [];
-  doc.on("data", (chunk) => chunks.push(chunk));
-
+  
+  const promise = new Promise((resolve, reject) => {
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+  
   const roomCharges = toNum(payload.roomCharges);
   const serviceCharges = toNum(payload.serviceCharges);
   const subtotal = roomCharges + serviceCharges;
@@ -289,10 +343,10 @@ async function generateCheckoutInvoicePdf(payload) {
     align: "center",
   });
   if (payload.hotelPhone) {
-    doc.text(`Contact No. : ${clean(payload.hotelPhone)}`, 190, doc.y + 2, { width: 270, align: "center" });
+    doc.text(`Contact No. : ${clean(payload.hotelPhone)}`, 190, 115, { width: 270, align: "center" });
   }
   if (payload.hotelState || payload.stateCode) {
-    doc.text(`STATE : ${clean(payload.hotelState, "N/A")} , STATE CODE : ${clean(payload.stateCode, "N/A")}`, 190, doc.y + 2, {
+    doc.text(`STATE : ${clean(payload.hotelState, "N/A")} , STATE CODE : ${clean(payload.stateCode, "N/A")}`, 190, 130, {
       width: 270,
       align: "center",
     });
@@ -324,18 +378,18 @@ async function generateCheckoutInvoicePdf(payload) {
   sectionLabel(doc, "Amount", 470, tableTop + 8, 70, "right");
   line(doc, tableTop + 23);
 
-  let rowY = tableTop + 49;
+  let rowY = tableTop + 30;
   const rows = buildChargeRows(payload);
   rows.slice(0, 5).forEach((row) => {
     doc.font("Helvetica").fontSize(9);
     text(doc, row.date, 36, rowY, { width: 80 });
     text(doc, `Room No. : ${clean(row.roomNumber, payload.roomNumber || "N/A")}`, 135, rowY, { width: 250 });
-    text(doc, money(row.amount), 470, rowY + 15, { width: 70, align: "right" });
-    text(doc, row.description, 148, rowY + 15, { width: 250 });
-    rowY += 34;
+    text(doc, money(row.amount), 470, rowY + 12, { width: 70, align: "right" });
+    text(doc, row.description, 148, rowY + 12, { width: 250 });
+    rowY += 28;
   });
 
-  const totalsTop = 610;
+  const totalsTop = 520;
   line(doc, totalsTop);
   doc.font("Helvetica").fontSize(9);
   const cgstRate = clean(payload.cgstRate, "6");
@@ -351,35 +405,40 @@ async function generateCheckoutInvoicePdf(payload) {
     ["Payable", payable],
   ];
   totalRows.forEach(([label, value], index) => {
-    const y = totalsTop + 8 + index * 14;
+    const y = totalsTop + 5 + index * 12;
     text(doc, `${label} :`, 350, y, { width: 95, align: "right" });
     text(doc, money(value), 458, y, { width: 82, align: "right" });
   });
-  line(doc, 710);
+  line(doc, totalsTop + 90);
 
   doc.font("Helvetica-Bold").fontSize(9);
-  text(doc, cashLabel, 38, 720, { width: 80 });
-  text(doc, money(paid), 145, 720, { width: 80 });
+  const summaryY = totalsTop + 98;
+  text(doc, cashLabel, 38, summaryY, { width: 80 });
+  text(doc, money(paid), 145, summaryY, { width: 80 });
   if (balance > 0) {
-    text(doc, `Balance ${money(balance)}`, 250, 720, { width: 120 });
+    text(doc, `Balance ${money(balance)}`, 250, summaryY, { width: 120 });
   }
 
   doc.font("Helvetica").fontSize(9);
-  text(doc, `In Words : ${numberToWords(payable)}`, 38, 740, { width: 490 });
-  text(doc, "Page No.", 34, 775, { width: 70 });
-  text(doc, "1", 125, 775, { width: 30 });
-  text(doc, "E.&O.E.", 82, 798, { width: 80 });
-  text(doc, "Guest Signature", 205, 798, { width: 120 });
-  text(doc, clean(payload.signatureName, hotelName), 420, 782, { width: 110, align: "center" });
-  text(doc, `For ${hotelName}`, 395, 798, { width: 160, align: "center" });
-  doc.fontSize(6).text("Powered by Prevoir Infotech", 438, 820, { width: 120, align: "right" });
+  text(doc, `In Words : ${numberToWords(payable)}`, 38, summaryY + 16, { width: 490 });
+
+  // Payment Section (Bank Details & QR Code)
+  const paymentSectionY = summaryY + 36;
+  drawBankDetails(doc, payload.bankDetails, 34, paymentSectionY);
+  await drawPaymentQr(doc, payload, 470, paymentSectionY - 5, 80);
+
+  const footerY = 740;
+  text(doc, "Page No.", 34, footerY, { width: 70 });
+  text(doc, "1", 125, footerY, { width: 30 });
+  text(doc, "E.&O.E.", 82, footerY + 22, { width: 80 });
+  text(doc, "Guest Signature", 205, footerY + 22, { width: 120 });
+  text(doc, clean(payload.signatureName, hotelName), 420, footerY + 6, { width: 110, align: "center" });
+  text(doc, `For ${hotelName}`, 395, footerY + 22, { width: 160, align: "center" });
+  doc.fontSize(6).text("Powered by Prevoir Infotech", 438, footerY + 38, { width: 120, align: "right" });
 
   doc.end();
 
-  const buffer = await new Promise((resolve, reject) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-  });
+  const buffer = await promise;
 
   return {
     buffer,

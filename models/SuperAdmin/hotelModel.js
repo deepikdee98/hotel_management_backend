@@ -46,6 +46,22 @@ const hotelSchema = mongoose.Schema(
       uploadedAt: { type: Date },
     },
 
+    paymentQrCode: {
+      url: { type: String },
+      key: { type: String },
+      fileName: { type: String },
+      contentType: { type: String },
+      uploadedAt: { type: Date },
+    },
+
+    bankDetails: {
+      accountName: { type: String },
+      accountNumber: { type: String },
+      bankName: { type: String },
+      ifscCode: { type: String },
+      branchName: { type: String },
+    },
+
     totalRooms: { 
       type: Number, 
       default: 0 

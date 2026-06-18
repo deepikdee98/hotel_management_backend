@@ -112,6 +112,8 @@ const updateHotelConfig = async (req, res) => {
       currentFinancialYear,
       financialYearFormat,
       logo,
+      paymentQrCode,
+      bankDetails,
     } = req.body;
 
     if (nightAuditTime !== undefined && !isValidTimeFormat(nightAuditTime)) {
@@ -142,6 +144,8 @@ const updateHotelConfig = async (req, res) => {
     hotel.dateFormat = dateFormat ? normalizeDateFormat(dateFormat) : hotel.dateFormat;
     const previousLogoKey = hotel.logo?.key || "";
     const previousLogoUrl = hotel.logo?.url || "";
+    const previousQrKey = hotel.paymentQrCode?.key || "";
+    const previousQrUrl = hotel.paymentQrCode?.url || "";
 
     if (logo !== undefined) {
       hotel.logo = {
@@ -150,6 +154,26 @@ const updateHotelConfig = async (req, res) => {
         fileName: logo?.fileName || "",
         contentType: logo?.contentType || "",
         uploadedAt: logo?.uploadedAt ? new Date(logo.uploadedAt) : new Date(),
+      };
+    }
+
+    if (paymentQrCode !== undefined) {
+      hotel.paymentQrCode = {
+        url: paymentQrCode?.url || "",
+        key: paymentQrCode?.key || "",
+        fileName: paymentQrCode?.fileName || "",
+        contentType: paymentQrCode?.contentType || "",
+        uploadedAt: paymentQrCode?.uploadedAt ? new Date(paymentQrCode.uploadedAt) : new Date(),
+      };
+    }
+
+    if (bankDetails !== undefined) {
+      hotel.bankDetails = {
+        accountName: bankDetails?.accountName || hotel.bankDetails?.accountName || "",
+        accountNumber: bankDetails?.accountNumber || hotel.bankDetails?.accountNumber || "",
+        bankName: bankDetails?.bankName || hotel.bankDetails?.bankName || "",
+        ifscCode: bankDetails?.ifscCode || hotel.bankDetails?.ifscCode || "",
+        branchName: bankDetails?.branchName || hotel.bankDetails?.branchName || "",
       };
     }
 
@@ -198,15 +222,27 @@ const updateHotelConfig = async (req, res) => {
       systemConfig.save(),
     ]);
 
-    const cleanupWarnings = logo !== undefined
+    const replacements = [];
+    if (logo !== undefined) {
+      replacements.push({
+        oldKey: previousLogoKey,
+        oldUrl: previousLogoUrl,
+        newKey: updatedHotel.logo?.key || "",
+      });
+    }
+    if (paymentQrCode !== undefined) {
+      replacements.push({
+        oldKey: previousQrKey,
+        oldUrl: previousQrUrl,
+        newKey: updatedHotel.paymentQrCode?.key || "",
+      });
+    }
+
+    const cleanupWarnings = replacements.length > 0
       ? await deleteReplacedS3Objects({
           hotelId: req.user.hotelId,
           hotelName: updatedHotel.name,
-          replacements: [{
-            oldKey: previousLogoKey,
-            oldUrl: previousLogoUrl,
-            newKey: updatedHotel.logo?.key || "",
-          }],
+          replacements,
         })
       : [];
 

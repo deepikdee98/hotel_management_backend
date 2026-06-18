@@ -101,18 +101,26 @@ function buildCompanionInvoiceItems(amount = 0) {
   ];
 }
 
-function resolveHotelLogoUrl(hotel, hotelId) {
-  if (!hotel?.logo?.key) return hotel?.logo?.url || "";
+function resolveS3Url(fileObj, hotel, hotelId) {
+  if (!fileObj?.key) return fileObj?.url || "";
 
   try {
     return createS3ReadTarget({
       hotelId,
       hotelName: hotel?.name,
-      key: hotel.logo.key,
+      key: fileObj.key,
     }).readUrl;
   } catch (error) {
-    return hotel?.logo?.url || "";
+    return fileObj?.url || "";
   }
+}
+
+function resolveHotelLogoUrl(hotel, hotelId) {
+  return resolveS3Url(hotel?.logo, hotel, hotelId);
+}
+
+function resolvePaymentQrUrl(hotel, hotelId) {
+  return resolveS3Url(hotel?.paymentQrCode, hotel, hotelId);
 }
 
 exports.completeCheckout = async (req, res) => {
@@ -120,7 +128,7 @@ exports.completeCheckout = async (req, res) => {
 
   try {
     const hotelId = req.user.hotelId;
-    const hotel = await Hotel.findById(hotelId).select("name phone address city country gstNumber logo checkOutTime");
+    const hotel = await Hotel.findById(hotelId).select("name phone address city country gstNumber logo paymentQrCode bankDetails checkOutTime");
     const [ho, mi] = (hotel?.checkOutTime || "11:00").split(":").map(Number);
 
     const {
@@ -374,6 +382,7 @@ exports.completeCheckout = async (req, res) => {
     const invoiceTimestamp = Date.now();
     const invoiceNumber = `INV-${invoiceTimestamp}`;
     const hotelLogoUrl = resolveHotelLogoUrl(hotel, hotelId);
+    const paymentQrUrl = resolvePaymentQrUrl(hotel, hotelId);
     let createdInvoice = null;
     const createdCompanionInvoices = [];
 
@@ -516,6 +525,8 @@ exports.completeCheckout = async (req, res) => {
           hotelPhone: hotel?.phone || "",
           hotelGstin: hotel?.gstNumber || req.user.gstin || "",
           hotelLogoUrl,
+          paymentQrUrl,
+          bankDetails: hotel?.bankDetails || {},
           guestName: checkin.guestName || "N/A",
           billToName: checkin.guestName || "N/A",
           guestGstin: checkin.gstNumber || "",
@@ -649,6 +660,8 @@ exports.completeCheckout = async (req, res) => {
             hotelPhone: hotel?.phone || "",
             hotelGstin: hotel?.gstNumber || req.user.gstin || "",
             hotelLogoUrl,
+            paymentQrUrl,
+            bankDetails: hotel?.bankDetails || {},
             guestName: checkin.guestName || "N/A",
             billToName: companion.name || "Companion",
             mobileNo: companion.mobile || checkin.mobileNo || "",
