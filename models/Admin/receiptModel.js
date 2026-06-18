@@ -34,6 +34,28 @@ const receiptSchema = new mongoose.Schema(
       default: "active",
       index: true,
     },
+    sourceModule: {
+      type: String,
+      enum: ["manual", "front-office", "accounts"],
+      default: "manual",
+      index: true,
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    folioId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Folio",
+      default: null,
+      index: true,
+    },
+    folioNumber: {
+      type: String,
+      default: "",
+      index: true,
+    },
     businessId: {
       type: String,
       default: "",
@@ -45,5 +67,9 @@ const receiptSchema = new mongoose.Schema(
 
 receiptSchema.index({ hotelId: 1, createdAt: -1 });
 receiptSchema.index({ hotelId: 1, receiptNumber: 1 }, { unique: true });
+receiptSchema.index(
+  { hotelId: 1, sourceModule: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: "objectId" } } }
+);
 
 module.exports = mongoose.model("Receipt", receiptSchema);

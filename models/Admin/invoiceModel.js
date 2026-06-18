@@ -32,6 +32,11 @@ const invoiceSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+    folioNumber: {
+      type: String,
+      default: "",
+      index: true,
+    },
     invoiceType: String,
     customerId: String,
     customerName: String,
@@ -41,6 +46,8 @@ const invoiceSchema = new mongoose.Schema(
     checkOut: Date,
     companyId: String,
     companyName: String,
+    gstin: String,
+    billingAddress: String,
     travelAgentId: String,
     bookingId: String,
     invoiceDate: Date,
@@ -82,6 +89,17 @@ const invoiceSchema = new mongoose.Schema(
       default: "",
       index: true,
     },
+    sourceModule: {
+      type: String,
+      enum: ["manual", "front-office", "accounts"],
+      default: "manual",
+      index: true,
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -94,5 +112,9 @@ const invoiceSchema = new mongoose.Schema(
 invoiceSchema.index({ hotelId: 1, invoiceDate: -1 });
 invoiceSchema.index({ hotelId: 1, status: 1 });
 invoiceSchema.index({ hotelId: 1, invoiceNumber: 1 }, { unique: true });
+invoiceSchema.index(
+  { hotelId: 1, sourceModule: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: "objectId" } } }
+);
 
 module.exports = mongoose.model("Invoice", invoiceSchema);

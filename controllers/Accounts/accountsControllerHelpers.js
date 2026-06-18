@@ -20,6 +20,12 @@ function search(searchTerm, fields) {
   };
 }
 
+function sourceModuleFilter(value) {
+  if (!value || value === "all") return {};
+  if (value === "manual") return { sourceModule: { $in: ["manual", "accounts", null, ""] } };
+  return { sourceModule: value };
+}
+
 function mapInvoice(invoice) {
   return {
     ...invoice.toObject(),
@@ -37,5 +43,6 @@ function mapInvoice(invoice) {
 module.exports = {
   tenantFilter,
   search,
+  sourceModuleFilter,
   mapInvoice,
 };

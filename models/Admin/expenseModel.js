@@ -24,6 +24,28 @@ const expenseSchema = new mongoose.Schema(
       default: "approved",
       index: true,
     },
+    sourceModule: {
+      type: String,
+      enum: ["manual", "front-office", "accounts"],
+      default: "manual",
+      index: true,
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    folioId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Folio",
+      default: null,
+      index: true,
+    },
+    folioNumber: {
+      type: String,
+      default: "",
+      index: true,
+    },
     taxAmount: { type: Number, default: 0 },
     taxableAmount: { type: Number, default: 0 },
     gstRate: { type: Number, default: 0 },
@@ -43,5 +65,9 @@ const expenseSchema = new mongoose.Schema(
 );
 
 expenseSchema.index({ hotelId: 1, date: -1 });
+expenseSchema.index(
+  { hotelId: 1, sourceModule: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: "objectId" } } }
+);
 
 module.exports = mongoose.model("Expense", expenseSchema);

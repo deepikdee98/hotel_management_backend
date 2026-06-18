@@ -11,11 +11,12 @@ const {
   getSettings,
   audit,
 } = require("../../services/accountsService");
-const { tenantFilter, search, mapInvoice } = require("./accountsControllerHelpers");
+const { tenantFilter, search, sourceModuleFilter, mapInvoice } = require("./accountsControllerHelpers");
 
 exports.listInvoices = asyncHandler(async (req, res) => {
   const filter = tenantFilter(req, "invoiceDate", search(req.query.search, ["invoiceNumber", "guestName", "customerName", "room", "companyName"]));
   if (req.query.status && req.query.status !== "all") filter.status = req.query.status;
+  Object.assign(filter, sourceModuleFilter(req.query.sourceModule));
   const { items, pagination } = await paginate(Invoice, filter, req.query, { sort: { invoiceDate: -1, createdAt: -1 } });
   res.json({ success: true, data: { invoices: items.map(mapInvoice), pagination } });
 });
@@ -33,6 +34,8 @@ exports.createInvoice = asyncHandler(async (req, res) => {
     invoiceNumber: req.body.invoiceNumber || await nextNumber(hotelId, settings.invoicePrefix || "INV-"),
     invoiceDate: req.body.invoiceDate || new Date(),
     status: req.body.status || invoiceStatus(totals),
+    sourceModule: "manual",
+    sourceId: null,
     createdBy: req.user._id,
   });
   await audit(req, "accounts.invoice.create", "Invoice generated", { invoiceId: invoice._id });

@@ -1,4 +1,7 @@
 const ServiceTransaction = require("../../../../../models/Admin/serviceTransactionModel");
+const Folio = require("../../../../../models/Admin/folioModel");
+const Checkin = require("../../../../../models/Admin/checkinModel");
+const { postServiceCharge } = require("../../../../../services/frontOfficeAccountingService");
 
 // @desc    Add a new service
 // @route   POST /api/admin/frontoffice/reception/post-service
@@ -24,6 +27,21 @@ const addService = async (req, res) => {
       total: finalTotal,
       remark,
       gstInclusive,
+    });
+
+    const checkin = await Checkin.findOne({ hotelId: req.user.hotelId, roomNumber: roomId, status: { $ne: "checked-out" } });
+    const folio = checkin ? await Folio.findOne({ hotelId: req.user.hotelId, checkinId: checkin._id }) : null;
+
+    await postServiceCharge({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: data._id,
+      folioId: folio?._id || null,
+      checkinId: checkin?._id || null,
+      amount: finalTotal,
+      description: serviceName,
+      reference: data._id,
+      userId: req.user._id,
     });
 
     res.status(201).json({ success: true, data });

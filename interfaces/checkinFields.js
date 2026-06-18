@@ -74,7 +74,13 @@ const checkinFields = [
   // Payment
   "paymentMode",
   "advanceAmount",
+  "advanceCollected",
+  "paidAmount",
   "ledgerAccount", 
+  "ledgerAc",
+  "panNo",
+  "paymentReference",
+  "reference",
   "remarks",       
 
   // Companions and Vehicle

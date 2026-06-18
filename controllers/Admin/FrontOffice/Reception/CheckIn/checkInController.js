@@ -3,10 +3,12 @@ const checkinFields = require('../../../../../interfaces/checkinFields');
 const Checkin = require('../../../../../models/Admin/checkinModel');
 const Folio = require('../../../../../models/Admin/folioModel');
 const Room = require('../../../../../models/Admin/roomModel');
+const RoomAdvance = require('../../../../../models/Admin/roomAdvanceModel');
 const Hotel = require('../../../../../models/SuperAdmin/hotelModel');
 const Reservation = require('../../../../../models/Admin/reservationModel');
 const generateBookingNumber = require('./generateBookingNumber');
 const { deleteReplacedS3Objects } = require('../../../../../utils/s3Cleanup');
+const { postRoomAdvance } = require('../../../../../services/frontOfficeAccountingService');
 
 const parseStructuredValue = (value, fallback) => {
   if (value === undefined || value === null) return fallback;
@@ -268,6 +270,15 @@ const createCheckIn = async (req, res) => {
     if (req.body.checkoutPlan !== undefined && !checkinData.checkoutPlan) checkinData.checkoutPlan = req.body.checkoutPlan;
     if (req.body.gstIn !== undefined && !checkinData.gstNumber) checkinData.gstNumber = req.body.gstIn;
 
+    const normalizedAdvanceAmount = Number(
+      req.body.advanceAmount ?? req.body.advanceCollected ?? req.body.paidAmount ?? checkinData.advanceAmount ?? 0
+    );
+    if (Number.isFinite(normalizedAdvanceAmount) && normalizedAdvanceAmount > 0) {
+      checkinData.advanceAmount = normalizedAdvanceAmount;
+      checkinData.paymentMode = checkinData.paymentMode || req.body.paymentMode || "cash";
+      checkinData.ledgerAccount = checkinData.ledgerAccount || req.body.ledgerAc || req.body.ledgerAccount || "";
+    }
+
     if (checkinData.companions !== undefined) checkinData.companions = normalizeObjectArray(checkinData.companions);
     if (checkinData.services !== undefined) checkinData.services = normalizeObjectArray(checkinData.services);
     if (checkinData.companyInfo !== undefined) checkinData.companyInfo = normalizeObjectValue(checkinData.companyInfo);
@@ -454,12 +465,13 @@ const createCheckIn = async (req, res) => {
       await reservation.save();
     }
 
+    let createdFolio = null;
     if (checkin.guestType !== "PAX") {
       const masterFolio = parentGuestCheckin
         ? await Folio.findOne({ hotelId: checkin.hotelId, checkinId: parentGuestCheckin._id }).select("_id")
         : null;
 
-      await Folio.create({
+      createdFolio = await Folio.create({
         hotelId: checkin.hotelId,
         folioNumber: `FO-${String(checkin._id).slice(-8).toUpperCase()}`,
         checkinId: checkin._id,
@@ -469,6 +481,42 @@ const createCheckIn = async (req, res) => {
         roomId: checkin.roomNumber || null,
         masterFolioId: masterFolio?._id || null,
       });
+    }
+
+    let createdAdvanceReceipt = null;
+    const advanceAmount = Number(checkin.advanceAmount || normalizedAdvanceAmount || 0);
+    if (advanceAmount > 0 && checkin.guestType !== "PAX") {
+      const paymentReference = req.body.paymentReference || req.body.reference || req.body.receiptNo || "";
+      const advance = await RoomAdvance.create({
+        hotelId: checkin.hotelId,
+        checkin: checkin._id,
+        guestId: checkin._id,
+        roomNumber: checkin.roomNumber,
+        bookingNo: checkin.bookingNumber || checkin.bookingNo || checkin._id,
+        guestName: checkin.guestName,
+        advanceAmount,
+        paymentMode: checkin.paymentMode || "cash",
+        ledgerAccount: checkin.ledgerAccount || "",
+        panNo: req.body.panNo || "",
+        remarks: "Advance collected during check-in",
+      });
+
+      const receiptResult = await postRoomAdvance({
+        hotelId: checkin.hotelId,
+        businessId: req.user.businessId || "",
+        sourceId: advance._id,
+        folioId: createdFolio?._id || null,
+        checkinId: checkin._id,
+        guestName: checkin.guestName,
+        amount: advanceAmount,
+        paymentMode: checkin.paymentMode || "cash",
+        reference: paymentReference || advance._id,
+        ledgerAccount: checkin.ledgerAccount || "",
+        panNo: req.body.panNo || "",
+        remarks: "Advance collected during check-in",
+        userId: req.user._id,
+      });
+      createdAdvanceReceipt = receiptResult.record;
     }
 
     if (room.status !== "occupied") {
@@ -495,6 +543,13 @@ const createCheckIn = async (req, res) => {
         guestName: checkin.guestName,
         roomNumber: result.roomNumber?.roomNumber,
         linkedRooms: await getLinkedRoomsForGroup(checkin.hotelId, checkin.bookingGroupId),
+        advanceReceipt: createdAdvanceReceipt ? {
+          receiptId: createdAdvanceReceipt._id,
+          receiptNumber: createdAdvanceReceipt.receiptNumber,
+          amount: createdAdvanceReceipt.amount,
+          paymentMode: createdAdvanceReceipt.paymentMode,
+          reference: createdAdvanceReceipt.reference,
+        } : null,
       }
     });
 

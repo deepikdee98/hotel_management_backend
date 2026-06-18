@@ -31,6 +31,22 @@ const refundSchema = new mongoose.Schema(
       default: "paid",
       index: true,
     },
+    sourceModule: {
+      type: String,
+      enum: ["manual", "front-office", "accounts"],
+      default: "manual",
+      index: true,
+    },
+    sourceId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      index: true,
+    },
+    folioNumber: {
+      type: String,
+      default: "",
+      index: true,
+    },
     approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
   },
@@ -39,5 +55,9 @@ const refundSchema = new mongoose.Schema(
 
 refundSchema.index({ hotelId: 1, date: -1 });
 refundSchema.index({ hotelId: 1, refundNumber: 1 }, { unique: true });
+refundSchema.index(
+  { hotelId: 1, sourceModule: 1, sourceId: 1 },
+  { unique: true, partialFilterExpression: { sourceId: { $type: "objectId" } } }
+);
 
 module.exports = mongoose.model("Refund", refundSchema);

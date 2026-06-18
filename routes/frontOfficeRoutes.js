@@ -25,6 +25,13 @@ const NightAudit = require("../models/Admin/nightAuditModel");
 const SystemConfig = require("../models/SystemConfig");
 const generateBookingNumber = require("../controllers/Admin/FrontOffice/Reception/CheckIn/generateBookingNumber");
 const expireRoomBlocks = require("../utils/expireRoomBlocks");
+const {
+  postRoomAdvance,
+  postRoomTariff,
+  postServiceCharge,
+  postSettlement,
+  postRefund,
+} = require("../services/frontOfficeAccountingService");
 
 const {
   getReservations,
@@ -522,6 +529,119 @@ router.post("/floors/:floorId/room-config", asyncHandler(async (req, res) => {
 }));
 
 
+router.put("/floors/:floorId/room-config/:roomTypeId", asyncHandler(async (req, res) => {
+  const { floorId, roomTypeId } = req.params;
+  const { count, startingRoomNumber, roomNumberFormat } = req.body;
+  const acType = String(req.body.acType || "NON_AC").toUpperCase() === "AC" ? "AC" : "NON_AC";
+  const oldAcType = String(req.query.oldAcType || acType).toUpperCase() === "AC" ? "AC" : "NON_AC";
+  const hotelId = req.user.hotelId;
+
+  const floor = await Floor.findOne({ _id: floorId, hotelId });
+
+  if (!floor) {
+    return res.status(404).json({ success: false, message: "Floor not found" });
+  }
+
+  const configIndex = floor.roomConfigurations.findIndex(
+    (config) => config.roomTypeId.toString() === roomTypeId && (config.acType || "NON_AC") === oldAcType
+  );
+
+  if (configIndex === -1) {
+    return res.status(404).json({ success: false, message: "Room config not found" });
+  }
+
+  const oldConfig = floor.roomConfigurations[configIndex];
+
+  // Check if rooms are in use (occupied or reserved)
+  const inUseRooms = await Room.find({
+    hotelId,
+    roomNumber: { $in: oldConfig.rooms },
+    status: { $in: ["occupied", "reserved", "blocked", "dirty", "out-of-order"] }
+  });
+
+  if (inUseRooms.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: `Cannot edit configuration. ${inUseRooms.length} rooms are currently in use or have special status.`
+    });
+  }
+
+  const hotel = await Hotel.findById(hotelId);
+  const currentTotalCount = await Room.countDocuments({ hotelId });
+  const requestedCount = Number(count);
+  const diff = requestedCount - oldConfig.count;
+
+  if (currentTotalCount + diff > hotel.totalRooms) {
+    return res.status(400).json({ 
+      success: false, 
+      message: `Room limit reached. Total allowed: ${hotel.totalRooms}. Currently have: ${currentTotalCount}. Requested increase: ${diff}.` 
+    });
+  }
+
+  const roomType = await RoomType.findOne({ _id: roomTypeId, hotelId });
+  if (!roomType) {
+    return res.status(404).json({ success: false, message: "Room type not found" });
+  }
+
+  const roomRate = acType === "AC"
+    ? Number(roomType.acRate || 0)
+    : Number(roomType.nonAcRate || 0);
+
+  if (roomRate <= 0) {
+    return res.status(400).json({
+      success: false,
+      message: `${acType === "AC" ? "AC" : "Non AC"} rate is not configured for this room type.`
+    });
+  }
+
+  // Delete old rooms
+  await Room.deleteMany({
+    hotelId,
+    roomNumber: { $in: oldConfig.rooms }
+  });
+
+  // Generate new rooms
+  const rooms = generateRooms(startingRoomNumber, Number(count), roomNumberFormat || "numeric");
+  if (!rooms.length) {
+    return res.status(400).json({ success: false, message: "Invalid startingRoomNumber format" });
+  }
+
+  // Check for room number collisions (excluding the ones we just deleted)
+  const existingRooms = await Room.find({ hotelId, roomNumber: { $in: rooms } });
+  if (existingRooms.length > 0) {
+    return res.status(400).json({
+      success: false,
+      message: `Room number collision detected. Some generated room numbers already exist: ${existingRooms.map(r => r.roomNumber).join(", ")}`
+    });
+  }
+
+  // Update config
+  floor.roomConfigurations[configIndex] = {
+    roomTypeId,
+    count: Number(count),
+    acType,
+    startingRoomNumber,
+    roomNumberFormat: roomNumberFormat || "numeric",
+    rooms,
+  };
+
+  await floor.save();
+
+  // Create new rooms
+  for (const roomNumber of rooms) {
+    await Room.create({
+      hotelId,
+      roomNumber,
+      roomType: roomTypeId,
+      floor: floor.floorNumber,
+      rate: roomRate,
+      acType,
+    });
+  }
+
+  res.json({ success: true, data: floor });
+}));
+
 router.delete("/floors/:floorId/room-config/:roomTypeId", asyncHandler(async (req, res) => {
   const { floorId, roomTypeId } = req.params;
   const acType = req.query.acType ? (String(req.query.acType).toUpperCase() === "AC" ? "AC" : "NON_AC") : "";
@@ -959,7 +1079,7 @@ router.post("/in-house/:folioId/shift-room", asyncHandler(async (req, res, next)
   const response = await shiftRoom(req, res, next);
 
   if (req.body.chargeToGuest && toNum(req.body.rateDifference) > 0) {
-    await FolioTransaction.create({
+    const tx = await FolioTransaction.create({
       hotelId: req.user.hotelId,
       folioId: context.folio._id,
       checkin: context.checkin._id,
@@ -970,6 +1090,19 @@ router.post("/in-house/:folioId/shift-room", asyncHandler(async (req, res, next)
       meta: {
         reason: req.body.reason,
       },
+    });
+
+    await postServiceCharge({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: tx._id,
+      folioId: context.folio._id,
+      checkinId: context.checkin._id,
+      amount: toNum(req.body.rateDifference),
+      taxableAmount: toNum(req.body.rateDifference),
+      description: tx.description,
+      reference: tx._id,
+      userId: req.user._id,
     });
   }
 
@@ -1023,6 +1156,20 @@ router.post("/in-house/:folioId/charges", asyncHandler(async (req, res) => {
       },
     });
 
+    await postServiceCharge({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: folioTx._id,
+      folioId: context.folio._id,
+      checkinId: checkin._id,
+      amount: totalAmount,
+      taxableAmount: amount,
+      totalTax: taxAmount,
+      description: folioTx.description,
+      reference: service._id,
+      userId: req.user._id,
+    });
+
     created.push(folioTx);
   }
 
@@ -1051,6 +1198,22 @@ router.post("/in-house/:folioId/room-tariff", asyncHandler(async (req, res) => {
     meta: {
       taxes: req.body.taxes || {},
     },
+  });
+
+  await postRoomTariff({
+    hotelId: req.user.hotelId,
+    businessId: req.user.businessId || "",
+    sourceId: tx._id,
+    folioId: context.folio._id,
+    checkinId: context.checkin._id,
+    amount: totalAmount,
+    taxableAmount: toNum(req.body.roomRate),
+    cgst: toNum(req.body.taxes?.cgst),
+    sgst: toNum(req.body.taxes?.sgst),
+    totalTax,
+    description: tx.description,
+    reference: tx._id,
+    userId: req.user._id,
   });
 
   res.status(201).json({ success: true, data: tx });
@@ -1091,6 +1254,20 @@ router.post("/in-house/:folioId/payment", asyncHandler(async (req, res) => {
     },
   });
 
+  await postRoomAdvance({
+    hotelId: req.user.hotelId,
+    businessId: req.user.businessId || "",
+    sourceId: advance._id,
+    folioId: folio._id,
+    checkinId: checkin._id,
+    guestName: checkin.guestName,
+    amount: toNum(req.body.amount),
+    paymentMode: req.body.paymentMode,
+    reference: req.body.receiptNumber || advance._id,
+    remarks: req.body.remarks || "Room advance/payment",
+    userId: req.user._id,
+  });
+
   res.status(201).json({ success: true, data: advance });
 }));
 
@@ -1109,7 +1286,7 @@ router.post("/in-house/:folioId/extend", asyncHandler(async (req, res) => {
   await checkin.save();
 
   if (additionalTariff > 0) {
-    await FolioTransaction.create({
+    const tx = await FolioTransaction.create({
       hotelId: req.user.hotelId,
       folioId: folio._id,
       checkin: checkin._id,
@@ -1122,6 +1299,18 @@ router.post("/in-house/:folioId/extend", asyncHandler(async (req, res) => {
         additionalNights,
         reason: req.body.reason,
       },
+    });
+
+    await postRoomTariff({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: tx._id,
+      folioId: folio._id,
+      checkinId: checkin._id,
+      amount: additionalTariff,
+      description: tx.description,
+      reference: tx._id,
+      userId: req.user._id,
     });
   }
 
@@ -1275,6 +1464,20 @@ router.post("/folio/:folioId/settle", asyncHandler(async (req, res) => {
       },
     });
     created.push(tx);
+
+    await postSettlement({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: tx._id,
+      folioId: folio._id,
+      checkinId: checkin._id,
+      guestName: payment.guestName || checkin.guestName,
+      amount: toNum(payment.amount),
+      paymentMode: payment.mode,
+      reference: payment.transactionId,
+      remarks: req.body.remarks || "Folio settlement",
+      userId: req.user._id,
+    });
   }
 
   const isFullSettlement = req.body.settlementType === "Full";
@@ -1343,6 +1546,20 @@ router.post("/folio/:folioId/paidout", asyncHandler(async (req, res) => {
       approvedBy: req.body.approvedBy,
       remarks: req.body.remarks,
     },
+  });
+
+  await postRefund({
+    hotelId: req.user.hotelId,
+    businessId: req.user.businessId || "",
+    sourceId: tx._id,
+    folioId: context.folio._id,
+    checkinId: context.checkin._id,
+    guestName: context.checkin.guestName,
+    amount,
+    paymentMode: req.body.paymentMode,
+    reference: tx._id,
+    reason: req.body.reason || req.body.remarks || type,
+    userId: req.user._id,
   });
 
   res.status(201).json({ success: true, data: tx });

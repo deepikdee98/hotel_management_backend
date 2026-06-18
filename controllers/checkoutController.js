@@ -14,6 +14,13 @@ const AuditLog = require("../models/AuditLog");
 const { calculateGSTBreakdown } = require("../utils/gstCalculator");
 const { generateCheckoutInvoicePdf } = require("../utils/invoiceGenerator");
 const { createS3ReadTarget, uploadInvoiceToS3 } = require("../services/s3UploadService");
+const {
+  createCheckoutInvoice,
+  postAdvanceApplication,
+  postCheckoutInvoiceAccounting,
+  postCompanyBilling,
+  postSettlement,
+} = require("../services/frontOfficeAccountingService");
 
 const ALLOWED_PAYMENT_MODES = new Set(["cash", "upi", "card"]);
 const ALLOWED_ROOM_STATUS = new Set(["dirty", "clean"]);
@@ -292,6 +299,7 @@ exports.completeCheckout = async (req, res) => {
           paid: amountPaidAtCheckout,
           mode: paymentMode || "cash",
           refund,
+          reference: payment.reference || payment.transactionId || payment.rrn || "",
           billingType: "full",
           recordedBy: req.user._id || null,
         },
@@ -330,6 +338,7 @@ exports.completeCheckout = async (req, res) => {
           paid: toNum(row.amount),
           mode,
           refund: 0,
+          reference: row.reference || row.transactionId || row.rrn || "",
           billingType: "split",
           recordedBy: req.user._id || null,
         };
@@ -370,6 +379,7 @@ exports.completeCheckout = async (req, res) => {
 
     const writeCheckoutRecords = async (activeSession = null) => {
       const writeOptions = activeSession ? { session: activeSession } : {};
+      let persistedPayments = [];
 
       folio.status = "closed";
       folio.actualCheckOutTime = normalizedCheckoutTime;
@@ -436,13 +446,13 @@ exports.completeCheckout = async (req, res) => {
       await folio.save(writeOptions);
 
       if (paymentRecords.length) {
-        await Payment.create(paymentRecords, writeOptions);
+        persistedPayments = await Payment.create(paymentRecords, writeOptions);
       }
       if (companyLedgerPayload) {
         await CompanyLedger.create([companyLedgerPayload], writeOptions);
       }
 
-      await FolioTransaction.create(
+      const [checkoutSettlementTx] = await FolioTransaction.create(
         [
           {
             hotelId,
@@ -463,6 +473,37 @@ exports.completeCheckout = async (req, res) => {
         ],
         writeOptions
       );
+
+      for (let index = 0; index < paymentRecords.length; index += 1) {
+        const paymentRecord = paymentRecords[index];
+        const persistedPayment = persistedPayments[index];
+        await postSettlement({
+          hotelId,
+          businessId: req.user.businessId || "",
+          sourceId: persistedPayment?._id || checkoutSettlementTx._id,
+          folioId: folio._id,
+          checkinId: checkin._id,
+          guestName: paymentRecord.payerName || checkin.guestName,
+          amount: toNum(paymentRecord.paid || paymentRecord.amount),
+          paymentMode: paymentRecord.mode,
+          reference: paymentRecord.reference || persistedPayment?._id || checkoutSettlementTx._id,
+          remarks: normalizedBillingType === "split" ? "Checkout split payment" : "Checkout settlement",
+          userId: req.user._id,
+          session: activeSession,
+        });
+      }
+
+      if (advancePaid > 0) {
+        await postAdvanceApplication({
+          hotelId,
+          businessId: req.user.businessId || "",
+          folioId: folio._id,
+          amount: Math.min(advancePaid, adjustedTotalAmount),
+          reference: checkoutSettlementTx._id,
+          remarks: "Advance adjusted at checkout",
+          session: activeSession,
+        });
+      }
 
       if (invoice.required !== false) {
         const pdfInfo = await generateCheckoutInvoicePdf({
@@ -515,14 +556,30 @@ exports.completeCheckout = async (req, res) => {
           }
         );
 
-        const [invoiceDoc] = await Invoice.create(
-          [
-            {
+        const { record: invoiceDoc } = await createCheckoutInvoice({
+          hotelId,
+          businessId: req.user.businessId || "",
+          sourceId: folio._id,
+          folioId: folio._id,
+          checkinId: checkin._id,
+          userId: req.user._id,
+          session: activeSession,
+          payload: {
               hotelId,
               invoiceNumber,
               folioId: folio._id,
               invoiceType: "Checkout",
               customerId: String(checkin._id),
+              customerName: checkin.guestName || "N/A",
+              guestName: checkin.guestName || "N/A",
+              billingType: normalizedBillingType === "company" ? "company" : normalizedBillingType === "split" ? "split" : "guest",
+              companyId: companyLedgerPayload?.companyId || "",
+              companyName: companyLedgerPayload?.companyName || "",
+              gstin: companyLedgerPayload?.gstin || "",
+              billingAddress: companyLedgerPayload?.billingAddress || "",
+              room: groupCheckins.map((item) => item.roomNumber?.roomNumber || item.roomNumber || "").filter(Boolean).join(", ") || String(checkin.roomNumber || folio.roomId || ""),
+              checkIn: checkin.checkInDate,
+              checkOut: normalizedCheckoutTime,
               bookingId: checkin.bookingGroupId || checkin.bookingNumber || checkin.bookingNo || "",
               invoiceDate: normalizedCheckoutTime,
               dueDate: normalizedCheckoutTime,
@@ -546,11 +603,36 @@ exports.completeCheckout = async (req, res) => {
                   separateCompanionCount: separateBillCompanions.length,
                 },
               },
-            },
-          ],
-          writeOptions
-        );
+          },
+        });
         createdInvoice = invoiceDoc;
+
+        await postCheckoutInvoiceAccounting({
+          hotelId,
+          businessId: req.user.businessId || "",
+          sourceId: invoiceDoc._id,
+          invoice: invoiceDoc,
+          roomCharges,
+          serviceCharges,
+          extraCharges,
+          cgst: roundedCgst,
+          sgst: roundedSgst,
+          discount,
+          userId: req.user._id,
+          session: activeSession,
+        });
+
+        if (normalizedBillingType === "company") {
+          await postCompanyBilling({
+            hotelId,
+            businessId: req.user.businessId || "",
+            sourceId: invoiceDoc._id,
+            invoice: invoiceDoc,
+            companyBilling: companyLedgerPayload,
+            userId: req.user._id,
+            session: activeSession,
+          });
+        }
 
         for (let index = 0; index < separateBillCompanions.length; index += 1) {
           const companion = separateBillCompanions[index];

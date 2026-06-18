@@ -143,15 +143,15 @@ function invoiceStatus(invoice) {
 }
 
 async function ensureChartOfAccounts(hotelId, businessId = "") {
-  const existing = await LedgerAccount.find({ hotelId, ...(businessId ? { businessId } : {}) }).sort({ code: 1 });
-  if (existing.length) return existing;
-
-  return LedgerAccount.insertMany([
+  const defaults = [
     { hotelId, businessId, code: "1001", name: "Cash in Hand", type: "Asset", normalBalance: "Dr" },
     { hotelId, businessId, code: "1002", name: "Bank Account", type: "Asset", normalBalance: "Dr" },
     { hotelId, businessId, code: "1003", name: "Accounts Receivable", type: "Asset", normalBalance: "Dr" },
+    { hotelId, businessId, code: "1004", name: "UPI Clearing", type: "Asset", normalBalance: "Dr" },
+    { hotelId, businessId, code: "1005", name: "Card Clearing", type: "Asset", normalBalance: "Dr" },
     { hotelId, businessId, code: "2001", name: "Accounts Payable", type: "Liability", normalBalance: "Cr" },
     { hotelId, businessId, code: "2002", name: "Advance Deposits", type: "Liability", normalBalance: "Cr" },
+    { hotelId, businessId, code: "2003", name: "GST Payable", type: "Liability", normalBalance: "Cr" },
     { hotelId, businessId, code: "3001", name: "Capital", type: "Equity", normalBalance: "Cr" },
     { hotelId, businessId, code: "4001", name: "Room Revenue", type: "Income", normalBalance: "Cr" },
     { hotelId, businessId, code: "4002", name: "F&B Revenue", type: "Income", normalBalance: "Cr" },
@@ -160,7 +160,15 @@ async function ensureChartOfAccounts(hotelId, businessId = "") {
     { hotelId, businessId, code: "5002", name: "Utilities", type: "Expense", normalBalance: "Dr" },
     { hotelId, businessId, code: "5003", name: "Supplies", type: "Expense", normalBalance: "Dr" },
     { hotelId, businessId, code: "5004", name: "Maintenance", type: "Expense", normalBalance: "Dr" },
-  ]);
+  ];
+
+  await Promise.all(defaults.map((account) => LedgerAccount.findOneAndUpdate(
+    { hotelId, code: account.code },
+    { $setOnInsert: account },
+    { upsert: true, returnDocument: "after" }
+  )));
+
+  return LedgerAccount.find({ hotelId }).sort({ code: 1 });
 }
 
 async function findLedgerAccount(hotelId, identifier, fallbackCode, businessId = "") {
@@ -171,7 +179,7 @@ async function findLedgerAccount(hotelId, identifier, fallbackCode, businessId =
     or.push({ code: String(identifier) }, { name: String(identifier) });
   }
   if (fallbackCode) or.push({ code: fallbackCode });
-  return LedgerAccount.findOne({ hotelId, ...(businessId ? { businessId } : {}), $or: or });
+  return LedgerAccount.findOne({ hotelId, $or: or });
 }
 
 async function postLedgerEntry({ hotelId, businessId = "", account, fallbackCode, date, description, reference, debit = 0, credit = 0 }) {

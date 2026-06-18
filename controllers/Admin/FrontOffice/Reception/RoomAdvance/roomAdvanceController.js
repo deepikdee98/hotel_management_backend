@@ -1,6 +1,7 @@
 const RoomAdvance = require("../../../../../models/Admin/roomAdvanceModel");
 const Checkin = require("../../../../../models/Admin/checkinModel");
 const Room = require("../../../../../models/Admin/roomModel");
+const { postRoomAdvance } = require("../../../../../services/frontOfficeAccountingService");
 
 
 // @desc    Create Room Advance Payment
@@ -87,6 +88,21 @@ const createRoomAdvance = async (req, res) => {
       panNo,
       noOfPrint,
       remarks
+    });
+
+    await postRoomAdvance({
+      hotelId: req.user.hotelId,
+      businessId: req.user.businessId || "",
+      sourceId: advance._id,
+      checkinId: checkin._id,
+      guestName: checkin.guestName,
+      amount,
+      paymentMode,
+      reference: advance._id,
+      ledgerAccount,
+      panNo,
+      remarks,
+      userId: req.user._id,
     });
 
     res.status(201).json({

@@ -4,10 +4,11 @@ const Invoice = require("../../models/Admin/invoiceModel");
 const Receipt = require("../../models/Admin/receiptModel");
 const { toNum, requireTenant, getBusinessId, paginate, nextNumber, invoiceStatus, getSettings, audit } = require("../../services/accountsService");
 const { requireFields, assertPositiveAmount } = require("../../validations/accountsValidation");
-const { tenantFilter, search } = require("./accountsControllerHelpers");
+const { tenantFilter, search, sourceModuleFilter } = require("./accountsControllerHelpers");
 
 exports.listReceipts = asyncHandler(async (req, res) => {
   const filter = tenantFilter(req, "createdAt", search(req.query.search, ["receiptNumber", "guestName", "customerName", "reference"]));
+  Object.assign(filter, sourceModuleFilter(req.query.sourceModule));
   const { items, pagination } = await paginate(Receipt, filter, req.query, { sort: { createdAt: -1 }, populate: "invoiceId receivedBy" });
   res.json({ success: true, data: { receipts: items, pagination } });
 });
@@ -23,6 +24,8 @@ exports.createReceipt = asyncHandler(async (req, res) => {
     hotelId,
     businessId,
     receiptNumber: req.body.receiptNumber || await nextNumber(hotelId, settings.receiptPrefix || "RCP-"),
+    sourceModule: "manual",
+    sourceId: null,
     receivedBy: req.user._id,
   });
 
