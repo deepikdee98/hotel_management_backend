@@ -45,9 +45,9 @@ app.set("trust proxy", env.trustProxy);
 
 // CORS FIX - must be before all routes/middlewares
 app.use((req, res, next) => {
-  // res.setHeader("Access-Control-Allow-Origin", "https://staging.zentrictechnology.com,http://localhost:3000");
-  res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Origin", "https://staging.zentrictechnology.com");
+  //res.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+ res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
