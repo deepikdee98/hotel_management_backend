@@ -85,18 +85,20 @@ const createTravelAgent = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!normalizedName || !normalizedCode) {
+  if (!normalizedName) {
     return res.status(400).json({
       success: false,
-      message: "Travel agent name and code are required",
+      message: "Travel agent name is required",
     });
   }
 
   try {
-    const existingTravelAgent = await TravelAgent.findOne({
-      hotelId,
-      code: normalizedCode,
-    });
+    const existingTravelAgent = normalizedCode
+      ? await TravelAgent.findOne({
+          hotelId,
+          code: normalizedCode,
+        })
+      : null;
 
     if (existingTravelAgent) {
       return res.status(409).json({
@@ -115,7 +117,7 @@ const createTravelAgent = asyncHandler(async (req, res) => {
     const travelAgent = await TravelAgent.create({
       hotelId,
       name: normalizedName,
-      code: normalizedCode,
+      ...(normalizedCode ? { code: normalizedCode } : {}),
       contactPerson: cleanString(contactPerson),
       phone: cleanString(phone),
       email: cleanString(email),
@@ -193,7 +195,7 @@ const updateTravelAgent = asyncHandler(async (req, res) => {
     }
 
     if (name !== undefined) travelAgent.name = cleanString(name);
-    if (code !== undefined) travelAgent.code = normalizedCode;
+    if (code !== undefined) travelAgent.code = normalizedCode || undefined;
     if (contactPerson !== undefined) travelAgent.contactPerson = cleanString(contactPerson);
     if (phone !== undefined) travelAgent.phone = cleanString(phone);
     if (email !== undefined) travelAgent.email = cleanString(email);

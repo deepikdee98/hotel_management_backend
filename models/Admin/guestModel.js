@@ -32,7 +32,7 @@ const guestSchema = new mongoose.Schema({
     gstNumber: String,
     referredByType: {
       type: String,
-      enum: ["Walk-in", "Travel Agent", "Company", "OTA", "Member", "In-house", "Complimentary"],
+      enum: ["Walk-in", "Travel Agent", "Company", "Member", "In-house", "Complimentary"],
       default: "Walk-in"
     },
     referredById: {

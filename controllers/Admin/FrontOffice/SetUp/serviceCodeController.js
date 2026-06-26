@@ -23,14 +23,18 @@ const getServiceCodes = async (req, res) => {
 const createServiceCode = async (req, res) => {
   try {
     const { code, serviceName, category, defaultRate, gst } = req.body;
+    const normalizedName = typeof serviceName === "string" ? serviceName.trim() : "";
+    const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
 
-    if (!code || !serviceName || !category) {
+    if (!normalizedName) {
       return res.status(400).json({
-        message: "Code, service name and category are required",
+        message: "Service name is required",
       });
     }
 
-    const existing = await Service.findOne({ code, hotelId: req.user.hotelId });
+    const existing = normalizedCode
+      ? await Service.findOne({ code: normalizedCode, hotelId: req.user.hotelId })
+      : null;
     if (existing) {
       return res.status(400).json({
         message: "Service code already exists",
@@ -38,9 +42,9 @@ const createServiceCode = async (req, res) => {
     }
 
     const service = await Service.create({
-      name: serviceName,
-      code,
-      category,
+      name: normalizedName,
+      ...(normalizedCode ? { code: normalizedCode } : {}),
+      category: category || "Other",
       defaultPrice: Number(defaultRate || 0),
       gstApplicable: Number(gst || 0) > 0,
       gstPercentage: Number(gst || 0),

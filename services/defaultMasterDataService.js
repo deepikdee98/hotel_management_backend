@@ -48,7 +48,7 @@ const defaultMasterData = [
   {
     module: "business",
     type: "marketSegment",
-    values: ["Individual", "Corporate", "Group", "Travel Agent", "OTA", "Government", "Other"],
+    values: ["Individual", "Corporate", "Group", "Travel Agent", "Government", "Other"],
   },
   {
     module: "business",

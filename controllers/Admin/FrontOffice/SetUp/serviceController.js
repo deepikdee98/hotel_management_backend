@@ -23,21 +23,26 @@ const createService = async (req, res) => {
       isFood,
     } = req.body;
 
-    if (!name || !code || defaultPrice == null) {
-      return res.status(400).json({ message: "Name, code and defaultPrice are required" });
+    const normalizedName = typeof name === "string" ? name.trim() : "";
+    const normalizedCode = typeof code === "string" ? code.trim().toUpperCase() : "";
+
+    if (!normalizedName) {
+      return res.status(400).json({ message: "Service name is required" });
     }
 
-    const existing = await Service.findOne({ code, hotelId: req.user.hotelId });
+    const existing = normalizedCode
+      ? await Service.findOne({ code: normalizedCode, hotelId: req.user.hotelId })
+      : null;
     if (existing) {
       return res.status(400).json({ message: "Service code already exists" });
     }
 
     const service = await Service.create({
-      name,
-      code,
+      name: normalizedName,
+      ...(normalizedCode ? { code: normalizedCode } : {}),
       category: category || "Other",
       description: description || "",
-      defaultPrice,
+      defaultPrice: Number(defaultPrice || 0),
       chargeType: chargeType || "PER_STAY",
       gstApplicable: typeof gstApplicable !== "undefined" ? !!gstApplicable : Number(gstPercentage || 0) > 0,
       gstPercentage: Number(gstPercentage || 0),

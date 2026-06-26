@@ -201,6 +201,11 @@ const generateHotelLogoFileName = ({ fileName, contentType, uploadType }) => {
   return `${baseName}-${Date.now()}${extensionFor(fileName, contentType)}`;
 };
 
+const generateHotelQrCodeFileName = ({ fileName, contentType }) => {
+  const baseName = sanitizeName(String(fileName || "QRCode").replace(/\.[^.]+$/, ""));
+  return `${baseName}-${Date.now()}${extensionFor(fileName, contentType)}`;
+};
+
 const generateS3Key = ({
   hotelId,
   hotelName,
@@ -221,6 +226,14 @@ const generateS3Key = ({
       rootNameFor(hotelId, hotelName),
       "logo",
       generateHotelLogoFileName({ fileName, contentType, uploadType }),
+    ].join("/");
+  }
+
+  if (sanitizeName(uploadType || "") === "payment-qr-code") {
+    return [
+      rootNameFor(hotelId, hotelName),
+      "QRCode",
+      generateHotelQrCodeFileName({ fileName, contentType }),
     ].join("/");
   }
 

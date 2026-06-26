@@ -15,7 +15,6 @@ const companySchema = new mongoose.Schema(
     },
     code: {
       type: String,
-      required: true,
       uppercase: true,
       trim: true,
       index: true,
@@ -43,7 +42,7 @@ const companySchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["Company", "Travel Agent", "OTA"],
+      enum: ["Company", "Travel Agent"],
       default: "Company",
       index: true,
     },
@@ -67,7 +66,10 @@ const companySchema = new mongoose.Schema(
 
 // Compound index for hotel-specific queries
 companySchema.index({ hotelId: 1, status: 1 });
-companySchema.index({ hotelId: 1, code: 1 }, { unique: true });
+companySchema.index(
+  { hotelId: 1, code: 1 },
+  { unique: true, partialFilterExpression: { code: { $exists: true, $type: "string" } } }
+);
 
 // Pre-save middleware to ensure code is uppercase
 companySchema.pre("save", function () {

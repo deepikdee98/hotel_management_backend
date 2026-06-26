@@ -15,7 +15,7 @@ const referralSchema = new mongoose.Schema(
     },
     type: {
       type: String,
-      enum: ["Company", "Travel Agent", "OTA"],
+      enum: ["Company", "Travel Agent"],
       required: true,
     },
     contactPerson: String,

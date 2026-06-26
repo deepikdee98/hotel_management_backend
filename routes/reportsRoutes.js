@@ -11,7 +11,7 @@ const {
   getGuestReport,
 } = require("../controllers/reportsController");
 
-router.use(protect, authorizeRoles("hoteladmin", "staff", "superadmin"), authorizeModule("reports"));
+router.use(protect, authorizeRoles("hoteladmin", "staff", "superadmin"), authorizeModule(["reports", "front-office"]));
 
 router.get("/dashboard", getDashboardReport);
 router.get("/occupancy", getOccupancyReport);

@@ -9,7 +9,7 @@ const getReferrals = async (req, res) => {
   try {
     const { type } = req.query;
 
-    if (["Company", "Travel Agent", "OTA"].includes(type)) {
+    if (["Company", "Travel Agent"].includes(type)) {
       const model = type === "Travel Agent" ? TravelAgent : Company;
       const filter = {
         hotelId: req.user.hotelId,

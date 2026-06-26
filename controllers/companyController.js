@@ -85,18 +85,20 @@ const createCompany = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!normalizedName || !normalizedCode) {
+  if (!normalizedName) {
     return res.status(400).json({
       success: false,
-      message: "Company name and code are required",
+      message: "Company name is required",
     });
   }
 
   try {
-    const existingCompany = await Company.findOne({
-      hotelId,
-      code: normalizedCode,
-    });
+    const existingCompany = normalizedCode
+      ? await Company.findOne({
+          hotelId,
+          code: normalizedCode,
+        })
+      : null;
 
     if (existingCompany) {
       return res.status(409).json({
@@ -115,7 +117,7 @@ const createCompany = asyncHandler(async (req, res) => {
     const company = await Company.create({
       hotelId,
       name: normalizedName,
-      code: normalizedCode,
+      ...(normalizedCode ? { code: normalizedCode } : {}),
       contactPerson: cleanString(contactPerson),
       phone: cleanString(phone),
       email: cleanString(email),
@@ -194,7 +196,7 @@ const updateCompany = asyncHandler(async (req, res) => {
     }
 
     if (name !== undefined) company.name = cleanString(name);
-    if (code !== undefined) company.code = normalizedCode;
+    if (code !== undefined) company.code = normalizedCode || undefined;
     if (contactPerson !== undefined) company.contactPerson = cleanString(contactPerson);
     if (phone !== undefined) company.phone = cleanString(phone);
     if (email !== undefined) company.email = cleanString(email);

@@ -16,8 +16,8 @@ const serviceSchema = mongoose.Schema(
 
     code: {
       type: String,
-      required: true,
       uppercase: true,
+      trim: true,
     },
 
     category: {
@@ -32,7 +32,6 @@ const serviceSchema = mongoose.Schema(
 
     defaultPrice: {
       type: Number,
-      required: true,
       default: 0,
     },
 

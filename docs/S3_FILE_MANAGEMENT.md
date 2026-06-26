@@ -40,6 +40,8 @@ Customer-owned files:
 - `{hotelName}/customer/{customerName}/image/{customerName}-{filename}`
 - `{hotelName}/customer/{customerName}/pdf/{customerName}-{filename}`
 - `{hotelName}/customer/{customerName}/invoice/{customerName}-INV-{invoiceNumber}-{timestamp}.pdf`
+- `{hotelName}/logo/{filename}`
+- `{hotelName}/QRCode/{filename}`
 
 If the customer name is unavailable, HMS uses `customer-NA`.
 
@@ -50,6 +52,8 @@ Examples:
 - `Grand-Hotel/customer/Rahul-Sharma/image/Rahul-Sharma-photo-1778124948214.jpg`
 - `Grand-Hotel/customer/Rahul-Sharma/pdf/Rahul-Sharma-passport-1778124948214.pdf`
 - `Grand-Hotel/customer/Rahul-Sharma/invoice/Rahul-Sharma-INV-1001-1778124948214.pdf`
+- `Grand-Hotel/logo/logo-1778124948214.png`
+- `Grand-Hotel/QRCode/QRCode-1778124948214.png`
 
 ## Supported MIME Types
 

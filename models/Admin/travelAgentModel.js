@@ -15,7 +15,6 @@ const travelAgentSchema = new mongoose.Schema(
     },
     code: {
       type: String,
-      required: true,
       uppercase: true,
       trim: true,
       index: true,
@@ -61,7 +60,10 @@ const travelAgentSchema = new mongoose.Schema(
 );
 
 // Compound index for hotelId + code uniqueness
-travelAgentSchema.index({ hotelId: 1, code: 1 }, { unique: true });
+travelAgentSchema.index(
+  { hotelId: 1, code: 1 },
+  { unique: true, partialFilterExpression: { code: { $exists: true, $type: "string" } } }
+);
 
 // Pre-save middleware to convert code to uppercase
 travelAgentSchema.pre("save", function () {
